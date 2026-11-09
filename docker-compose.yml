@@ -1,0 +1,36 @@
+# Eigener Bociva-Server. Vor dem ersten Start unter Linux:
+#   mkdir -p data keys && sudo chown -R 65532:65532 data keys
+# Danach steht der Einrichtungscode für das erste Konto im Protokoll:
+#   docker compose logs bociva
+services:
+  bociva:
+    build: .
+    container_name: bociva
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      # Nur lokal: davor gehört ein Reverse Proxy mit HTTPS. Gesundheitsdaten
+      # und Passwörter dürfen nicht unverschlüsselt durchs Netz.
+      - "127.0.0.1:8770:8770"
+    volumes:
+      - ./data:/data
+      # Getrennt von ./data: Eine Datensicherung ohne Schlüssel ist wertlos.
+      # Den Schlüssel gesondert sichern!
+      - ./keys:/keys
+    environment:
+      # Hinter einem Reverse Proxy, damit die Anmeldesperre die echte IP sieht:
+      # BOCIVA_TRUST_PROXY: "true"
+      # KI-Analyse: Jeder Dienst mit Chat-Completions-Schnittstelle, selbst
+      # gehostet oder als API. Für Fotos braucht das Modell Bildverständnis.
+      # BOCIVA_AI_BASE_URL: "http://host.docker.internal:11434/v1"
+      # BOCIVA_AI_MODEL: "name-des-modells"
+      # BOCIVA_AI_API_KEY: "schluessel"
+      # Kontakt in der Kennung gegenüber Open Food Facts (von dort erwünscht):
+      # BOCIVA_FOOD_CONTACT: "betreiber@example.org"
+      TZ: Europe/Berlin

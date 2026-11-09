@@ -1,0 +1,58 @@
+name: bociva
+description: "A new Flutter project."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.7
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  bociva_shared:
+    path: ../packages/bociva_shared
+  file_picker: ^13.2.0
+  flutter_secure_storage: ^11.2.0
+  health: ^13.3.0
+  http: ^1.6.0
+  image_picker: ^1.2.3
+  intl: any
+  mobile_scanner: ^7.4.2
+  path: ^1.9.1
+  path_provider: ^2.1.6
+  sqlite3: ^3.8.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+# mobile_scanner liest unter Android sonst mit einem Dienst, der Nutzungsdaten
+# an Dritte meldet. Die Kopie liest mit zxing-cpp; siehe third_party/LIESMICH.md.
+dependency_overrides:
+  mobile_scanner:
+    path: ../third_party/mobile_scanner
+
+# Verschlüsselte Datenbank auf dem Gerät (SQLite3MultipleCiphers, MIT).
+hooks:
+  user_defines:
+    sqlite3:
+      source: sqlite3mc
+
+flutter:
+  uses-material-design: true
+  fonts:
+    - family: Nunito
+      fonts:
+        - asset: assets/fonts/Nunito-400.ttf
+          weight: 400
+        - asset: assets/fonts/Nunito-600.ttf
+          weight: 600
+        - asset: assets/fonts/Nunito-700.ttf
+          weight: 700
+        - asset: assets/fonts/Nunito-800.ttf
+          weight: 800

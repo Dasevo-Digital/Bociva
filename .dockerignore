@@ -1,0 +1,7 @@
+**/.dart_tool
+**/build
+**/data
+**/keys
+app
+third_party
+.git

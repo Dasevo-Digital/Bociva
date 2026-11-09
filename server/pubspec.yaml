@@ -1,0 +1,27 @@
+name: bociva_server
+description: Selbst gehosteter Sync-Server und Weboberfläche von Bociva.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  bociva_shared:
+    path: ../packages/bociva_shared
+  crypto: ^3.0.7
+  http: ^1.6.0
+  path: ^1.9.1
+  shelf: ^1.4.2
+  shelf_router: ^1.1.4
+  sqlite3: ^3.8.0
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.25.6
+
+# Verschlüsselte Datenbank (SQLite3MultipleCiphers, MIT).
+hooks:
+  user_defines:
+    sqlite3:
+      source: sqlite3mc

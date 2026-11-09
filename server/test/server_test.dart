@@ -171,6 +171,38 @@ void main() {
     );
   });
 
+  test('Rezepte und Fasten werden abgeglichen und exportiert', () async {
+    final c = await admin();
+    final phone = MemoryStore();
+    final repo = BocivaRepository(phone);
+    await repo.saveRecipe(
+      const Recipe(
+        id: 'r',
+        name: 'Suppe',
+        servings: 2,
+        ingredients: [
+          RecipeIngredient(
+            name: 'Linsen',
+            amount: 200,
+            nutrients: Nutrients(kcal: 232),
+          ),
+        ],
+      ),
+    );
+    await repo.startFasting(16);
+    await SyncEngine(phone, c).run();
+
+    final web = MemoryStore();
+    await SyncEngine(web, c).run();
+    final other = BocivaRepository(web);
+    expect((await other.recipes()).single.perServing.kcal, 116);
+    expect((await other.activeFasting())!.targetHours, 16);
+    expect((await other.searchLocal('supp')).single.name, 'Suppe');
+    final export = await c.export();
+    expect(export['recipe'], hasLength(1));
+    expect(export['fasting'], hasLength(1));
+  });
+
   test('Ohne Anmeldung gibt es nichts', () async {
     for (final path in ['api/me', 'api/export', 'api/foods/barcode/40111445']) {
       final res = await http.get(base.resolve(path));

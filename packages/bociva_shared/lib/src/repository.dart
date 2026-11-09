@@ -204,6 +204,67 @@ class BocivaRepository {
       ActivityEntry.fromJson(r.data),
   ];
 
+  // Rezepte
+
+  Future<List<Recipe>> recipes() async => [
+    for (final r in await store.all(RecordKind.recipe)) Recipe.fromJson(r.data),
+  ]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+
+  /// Speichert das Rezept und sein Gegenstück als Lebensmittel. Bereits
+  /// Eingetragenes bleibt unverändert, weil das Tagebuch eigene Werte hat.
+  Future<void> saveRecipe(Recipe recipe) async {
+    await _put(RecordKind.recipe, recipe.id, recipe.toJson());
+    final previous = await store.get(
+      RecordKind.food,
+      Recipe.foodIdFor(recipe.id),
+    );
+    final lastUsedAt = previous == null || previous.deleted
+        ? 0
+        : Food.fromJson(previous.data).lastUsedAt;
+    await saveFood(recipe.toFood(lastUsedAt: lastUsedAt));
+  }
+
+  Future<void> deleteRecipe(String id) async {
+    await _delete(RecordKind.recipe, id);
+    await deleteFood(Recipe.foodIdFor(id));
+  }
+
+  // Fasten
+
+  Future<List<FastingSession>> fastingSessions() async => [
+    for (final r in await store.all(RecordKind.fasting))
+      FastingSession.fromJson(r.data),
+  ]..sort((a, b) => b.startAt.compareTo(a.startAt));
+
+  /// Wurde offline auf zwei Geräten gestartet, gilt das jüngste Fasten.
+  Future<FastingSession?> activeFasting() async {
+    for (final s in await fastingSessions()) {
+      if (s.isActive) return s;
+    }
+    return null;
+  }
+
+  Future<FastingSession> startFasting(
+    int targetHours, {
+    DateTime? startAt,
+  }) async {
+    final now = _clock();
+    final start = startAt == null || startAt.isAfter(now) ? now : startAt;
+    final session = FastingSession(
+      id: newId(),
+      date: dateKey(start),
+      startAt: start.millisecondsSinceEpoch,
+      targetHours: targetHours,
+    );
+    await _put(RecordKind.fasting, session.id, session.toJson());
+    return session;
+  }
+
+  Future<void> endFasting(FastingSession session) =>
+      _put(RecordKind.fasting, session.id, session.ended(nowMs).toJson());
+
+  Future<void> deleteFasting(String id) => _delete(RecordKind.fasting, id);
+
   // Zusammenfassung
 
   Future<DaySummary> summary(String date, Profile profile) async => DaySummary(

@@ -142,6 +142,117 @@ void main() {
     });
   });
 
+  group('Rezepte', () {
+    const flour = Food(
+      id: 'f',
+      name: 'Mehl',
+      per100: Nutrients(kcal: 350, protein: 10, carbs: 70, fat: 1),
+    );
+    const egg = Food(
+      id: 'e',
+      name: 'Ei',
+      per100: Nutrients(kcal: 150, protein: 13, carbs: 1, fat: 10),
+    );
+    final recipe = Recipe(
+      id: 'r1',
+      name: 'Pfannkuchen',
+      servings: 4,
+      ingredients: [
+        RecipeIngredient.fromFood(flour, 200),
+        RecipeIngredient.fromFood(egg, 200),
+      ],
+    );
+
+    test('rechnet Gesamtwert und Portion', () {
+      expect(recipe.total.kcal, 1000);
+      expect(recipe.perServing.kcal, 250);
+      expect(recipe.servingAmount, 100);
+      final food = recipe.toFood();
+      expect(food.per100.kcal, 250);
+      expect(food.forAmount(food.servings.single.amount).kcal, 250);
+    });
+
+    test('erscheint in der Suche und lässt sich eintragen', () async {
+      final repo = BocivaRepository(MemoryStore());
+      await repo.saveRecipe(recipe);
+      final found = (await repo.searchLocal('pfannk')).single;
+      expect(found.source, FoodSource.recipe);
+      await repo.logFood(
+        found,
+        date: '2026-11-09',
+        meal: Meal.dinner,
+        amount: 100,
+      );
+      expect((await repo.diary('2026-11-09')).single.nutrients.kcal, 250);
+    });
+
+    test(
+      'Änderung behält „zuletzt genutzt“, Löschen entfernt beides',
+      () async {
+        final repo = BocivaRepository(MemoryStore());
+        await repo.saveRecipe(recipe);
+        await repo.logFood(
+          recipe.toFood(),
+          date: '2026-11-09',
+          meal: Meal.dinner,
+          amount: 100,
+        );
+        await repo.saveRecipe(
+          Recipe(
+            id: 'r1',
+            name: 'Pfannkuchen dünn',
+            servings: 8,
+            ingredients: recipe.ingredients,
+          ),
+        );
+        final recent = await repo.recentFoods();
+        expect(recent.single.name, 'Pfannkuchen dünn');
+        expect((await repo.diary('2026-11-09')).single.name, 'Pfannkuchen');
+        await repo.deleteRecipe('r1');
+        expect(await repo.recipes(), isEmpty);
+        expect(await repo.searchLocal('pfannk'), isEmpty);
+      },
+    );
+  });
+
+  group('Fasten', () {
+    test('läuft, zeigt Fortschritt und endet', () async {
+      var now = DateTime(2026, 11, 9, 20);
+      final repo = BocivaRepository(MemoryStore(), clock: () => now);
+      final s = await repo.startFasting(16);
+      now = DateTime(2026, 11, 10, 4);
+      expect((await repo.activeFasting())!.progress(now), 0.5);
+      expect(s.date, '2026-11-09');
+      now = DateTime(2026, 11, 10, 12);
+      await repo.endFasting(s);
+      expect(await repo.activeFasting(), isNull);
+      final done = (await repo.fastingSessions()).single;
+      expect(done.elapsed(DateTime(2030)), const Duration(hours: 16));
+    });
+
+    test('Beginn in der Zukunft wird auf jetzt gesetzt', () async {
+      final now = DateTime(2026, 11, 9, 20);
+      final repo = BocivaRepository(MemoryStore(), clock: () => now);
+      final s = await repo.startFasting(
+        16,
+        startAt: now.add(const Duration(hours: 3)),
+      );
+      expect(s.start, now);
+    });
+
+    test('Profil schaltet Fasten ein, ohne Rest zu ändern', () {
+      const p = Profile(
+        sex: Sex.male,
+        birthYear: 1980,
+        heightCm: 180,
+        weightKg: 80,
+      );
+      final on = p.withFastingEnabled(true);
+      expect(on.fastingEnabled, isTrue);
+      expect(on.heightCm, 180);
+    });
+  });
+
   group('Sync', () {
     late List<SyncRecord> serverRecords;
     late int seq;

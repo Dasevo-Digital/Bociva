@@ -11,7 +11,10 @@ import 'scanner_screen.dart';
 
 class AddFoodScreen extends StatefulWidget {
   const AddFoodScreen({super.key, required this.meal});
-  final Meal meal;
+
+  /// Zum Auswählen einer Rezeptzutat `null`: Dann wird nichts eingetragen und
+  /// die Auswahl als [RecipeIngredient] zurückgegeben.
+  final Meal? meal;
 
   @override
   State<AddFoodScreen> createState() => _AddFoodScreenState();
@@ -19,7 +22,10 @@ class AddFoodScreen extends StatefulWidget {
 
 class _AddFoodScreenState extends State<AddFoodScreen> {
   final _query = TextEditingController();
-  List<Food> _local = const [], _online = const [], _recent = const [];
+  List<Food> _local = const [],
+      _online = const [],
+      _recent = const [],
+      _recipes = const [];
   bool _searching = false;
   String? _onlineError;
 
@@ -36,8 +42,15 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
   }
 
   Future<void> _loadRecent() async {
-    final recent = await context.app.repo.recentFoods();
-    if (mounted) setState(() => _recent = recent);
+    final repo = context.appRead.repo;
+    final recent = await repo.recentFoods();
+    final recipes = [for (final r in await repo.recipes()) r.toFood()];
+    if (mounted) {
+      setState(() {
+        _recent = recent;
+        _recipes = recipes;
+      });
+    }
   }
 
   Future<void> _onChanged(String text) async {
@@ -70,7 +83,24 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
     }
   }
 
+  bool get _picking => widget.meal == null;
+
   Future<void> _open(Food food) async {
+    if (_picking) {
+      final navigator = Navigator.of(context);
+      double? chosen;
+      await showFoodAmountSheet(
+        context,
+        food,
+        null,
+        onConfirm: (amount) => chosen = amount,
+        actionLabel: 'Zum Rezept hinzufügen',
+      );
+      if (chosen != null) {
+        navigator.pop(RecipeIngredient.fromFood(food, chosen!));
+      }
+      return;
+    }
     final messenger = ScaffoldMessenger.of(context);
     final added = await showFoodAmountSheet(context, food, widget.meal);
     if (added == true) {
@@ -175,7 +205,7 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
     final seen = _local.map((f) => f.id).toSet();
     final online = _online.where((f) => !seen.contains(f.id)).toList();
     return Scaffold(
-      appBar: AppBar(title: Text(widget.meal.label)),
+      appBar: AppBar(title: Text(widget.meal?.label ?? 'Zutat wählen')),
       body: Column(
         children: [
           Padding(
@@ -213,17 +243,19 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
                   label: Text(kIsWeb ? 'Strichcode' : 'Scannen'),
                   onPressed: _barcode,
                 ),
-                const SizedBox(width: 8),
-                ActionChip(
-                  key: const Key('open-ai'),
-                  avatar: const Icon(Icons.auto_awesome, size: 18),
-                  label: const Text('KI-Analyse'),
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => AiScreen(meal: widget.meal),
+                if (widget.meal case final meal?) ...[
+                  const SizedBox(width: 8),
+                  ActionChip(
+                    key: const Key('open-ai'),
+                    avatar: const Icon(Icons.auto_awesome, size: 18),
+                    label: const Text('KI-Analyse'),
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => AiScreen(meal: meal),
+                      ),
                     ),
                   ),
-                ),
+                ],
                 const SizedBox(width: 8),
                 ActionChip(
                   key: const Key('open-custom'),
@@ -240,9 +272,15 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
               padding: const EdgeInsets.only(bottom: 24),
               children: [
                 if (!hasQuery) ...[
+                  if (_recipes.isNotEmpty && !_picking)
+                    const _Header('Rezepte'),
+                  if (!_picking)
+                    for (final f in _recipes) _FoodTile(food: f, onTap: _open),
                   if (_recent.isNotEmpty) const _Header('Zuletzt verwendet'),
-                  for (final f in _recent) _FoodTile(food: f, onTap: _open),
-                  if (_recent.isEmpty)
+                  for (final f in _recent)
+                    if (!_picking || f.source != FoodSource.recipe)
+                      _FoodTile(food: f, onTap: _open),
+                  if (_recent.isEmpty && (_recipes.isEmpty || _picking))
                     const Padding(
                       padding: EdgeInsets.all(32),
                       child: Text(

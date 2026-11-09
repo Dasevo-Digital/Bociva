@@ -41,7 +41,18 @@ abstract final class RecordKind {
   static const weight = 'weight';
   static const activity = 'activity';
   static const profile = 'profile';
-  static const all = {food, diary, water, weight, activity, profile};
+  static const recipe = 'recipe';
+  static const fasting = 'fasting';
+  static const all = {
+    food,
+    diary,
+    water,
+    weight,
+    activity,
+    profile,
+    recipe,
+    fasting,
+  };
 }
 
 /// Datenablage eines Geräts. Native Apps speichern in SQLite, im Browser

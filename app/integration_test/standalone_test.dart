@@ -87,5 +87,71 @@ void main() {
     final header = String.fromCharCodes(raf.readSync(16));
     raf.closeSync();
     expect(header, isNot(startsWith('SQLite format')));
+
+    // Intervallfasten einschalten und starten.
+    await tester.tap(find.text('Mehr'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('fasting-toggle')));
+    await tester.pumpAndSettle();
+    expect(controller.profile!.fastingEnabled, isTrue);
+    await tester.tap(find.text('Tagebuch'));
+    await tester.pumpAndSettle();
+    final diaryList = find
+        .descendant(
+          of: find.byType(RefreshIndicator),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    await tester.drag(diaryList, const Offset(0, 2000));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('fasting-start')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('fasting-plan-18')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('fasting-confirm')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('fasting-elapsed')), findsOneWidget);
+    expect(controller.fasting!.targetHours, 18);
+    await tester.tap(find.byKey(const Key('fasting-end')));
+    await tester.pumpAndSettle();
+    expect(controller.fasting, isNull);
+
+    // Rezept über die normale Lebensmittelsuche zusammenstellen.
+    await tester.tap(find.text('Mehr'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('open-recipes')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('recipe-new')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('recipe-name')),
+      'Bananenquark',
+    );
+    await tester.enterText(find.byKey(const Key('recipe-servings')), '2');
+    FocusManager.instance.primaryFocus?.unfocus();
+    await _settleFor(tester, const Duration(seconds: 1));
+    await tester.tap(find.byKey(const Key('recipe-add-ingredient')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('food-search')), 'Banane');
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ListTile, 'Banane'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('amount-add')));
+    await tester.pumpAndSettle();
+    FocusManager.instance.primaryFocus?.unfocus();
+    await _settleFor(tester, const Duration(seconds: 1));
+    final saveRecipe = find.byKey(const Key('recipe-save'));
+    await tester.ensureVisible(saveRecipe);
+    await tester.pumpAndSettle();
+    await tester.tap(saveRecipe);
+    await _settleFor(tester, const Duration(seconds: 1));
+    final recipes = await controller.repo.recipes();
+    expect(recipes.single.name, 'Bananenquark');
+    // Eine mittelgroße Banane sind 120 g; 107 kcal auf zwei Portionen.
+    expect(recipes.single.perServing.kcal, closeTo(53.4, 0.1));
+    expect(
+      (await controller.repo.searchLocal('bananenq')).single.source,
+      FoodSource.recipe,
+    );
   });
 }

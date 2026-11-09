@@ -21,10 +21,15 @@ class ControllerScope extends InheritedNotifier<AppController> {
 
   static AppController of(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<ControllerScope>()!.notifier!;
+
+  /// Ohne Abhängigkeit, also auch in `initState` erlaubt.
+  static AppController read(BuildContext context) =>
+      context.getInheritedWidgetOfExactType<ControllerScope>()!.notifier!;
 }
 
 extension ControllerContext on BuildContext {
   AppController get app => ControllerScope.of(this);
+  AppController get appRead => ControllerScope.read(this);
 }
 
 /// Zustand der App. Oberflächen lesen hier und melden Änderungen hierher;
@@ -46,6 +51,7 @@ class AppController extends ChangeNotifier {
   Profile? profile;
   String date = dateKey(DateTime.now());
   DaySummary? day;
+  FastingSession? fasting;
 
   /// Steigt bei jeder Datenänderung, damit z. B. die Statistik neu lädt.
   int dataVersion = 0;
@@ -175,6 +181,9 @@ class AppController extends ChangeNotifier {
   Future<void> reload({bool notify = true}) async {
     profile = await repo.profile();
     day = profile == null ? null : await repo.summary(date, profile!);
+    fasting = profile?.fastingEnabled ?? false
+        ? await repo.activeFasting()
+        : null;
     dataVersion++;
     if (notify) notifyListeners();
   }
@@ -278,6 +287,46 @@ class AppController extends ChangeNotifier {
     await repo.saveFood(food);
     dataVersion++;
     notifyListeners();
+    _changed();
+  }
+
+  // Rezepte
+
+  Future<void> saveRecipe(Recipe recipe) async {
+    await repo.saveRecipe(recipe);
+    await reload();
+    _changed();
+  }
+
+  Future<void> deleteRecipe(String id) async {
+    await repo.deleteRecipe(id);
+    await reload();
+    _changed();
+  }
+
+  // Fasten
+
+  Future<void> setFastingEnabled(bool enabled) async {
+    await saveProfile(profile!.withFastingEnabled(enabled));
+  }
+
+  Future<void> startFasting(int hours, {DateTime? startAt}) async {
+    await repo.startFasting(hours, startAt: startAt);
+    await reload();
+    _changed();
+  }
+
+  Future<void> endFasting() async {
+    final active = fasting;
+    if (active == null) return;
+    await repo.endFasting(active);
+    await reload();
+    _changed();
+  }
+
+  Future<void> deleteFasting(String id) async {
+    await repo.deleteFasting(id);
+    await reload();
     _changed();
   }
 

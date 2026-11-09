@@ -4,19 +4,37 @@ import 'package:flutter/material.dart';
 import '../controller.dart';
 import '../format.dart';
 
-/// Menge wählen und eintragen. Gibt `true` zurück, wenn etwas eingetragen wurde.
-Future<bool?> showFoodAmountSheet(BuildContext context, Food food, Meal meal) =>
-    showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (_) => _FoodAmountSheet(food: food, meal: meal),
-    );
+/// Menge wählen und eintragen. Gibt `true` zurück, wenn etwas eingetragen
+/// wurde. Mit [onConfirm] wird nur die Menge übergeben, nichts eingetragen.
+Future<bool?> showFoodAmountSheet(
+  BuildContext context,
+  Food food,
+  Meal? meal, {
+  void Function(double amount)? onConfirm,
+  String? actionLabel,
+}) => showModalBottomSheet<bool>(
+  context: context,
+  isScrollControlled: true,
+  showDragHandle: true,
+  builder: (_) => _FoodAmountSheet(
+    food: food,
+    meal: meal,
+    onConfirm: onConfirm,
+    actionLabel: actionLabel,
+  ),
+);
 
 class _FoodAmountSheet extends StatefulWidget {
-  const _FoodAmountSheet({required this.food, required this.meal});
+  const _FoodAmountSheet({
+    required this.food,
+    required this.meal,
+    this.onConfirm,
+    this.actionLabel,
+  });
   final Food food;
-  final Meal meal;
+  final Meal? meal;
+  final void Function(double amount)? onConfirm;
+  final String? actionLabel;
 
   @override
   State<_FoodAmountSheet> createState() => _FoodAmountSheetState();
@@ -101,10 +119,16 @@ class _FoodAmountSheetState extends State<_FoodAmountSheet> {
                 ? null
                 : () async {
                     final navigator = Navigator.of(context);
-                    await context.app.logFood(food, widget.meal, _value!);
+                    if (widget.onConfirm case final confirm?) {
+                      confirm(_value!);
+                    } else {
+                      await context.app.logFood(food, widget.meal!, _value!);
+                    }
                     navigator.pop(true);
                   },
-            child: Text('Zu ${widget.meal.label} hinzufügen'),
+            child: Text(
+              widget.actionLabel ?? 'Zu ${widget.meal!.label} hinzufügen',
+            ),
           ),
         ],
       ),

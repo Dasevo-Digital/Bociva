@@ -128,7 +128,7 @@ enum Meal {
   };
 }
 
-enum FoodSource { custom, openFoodFacts, builtin, ai }
+enum FoodSource { custom, openFoodFacts, builtin, ai, recipe }
 
 class Serving {
   const Serving(this.name, this.amount);
@@ -405,6 +405,7 @@ class Profile {
     this.carbsPct = 50,
     this.fatPct = 30,
     this.addActivityToBudget = false,
+    this.fastingEnabled = false,
   });
 
   factory Profile.fromJson(Map<String, Object?> j) => Profile(
@@ -422,6 +423,7 @@ class Profile {
     carbsPct: _i(j['carbsPct'], 50),
     fatPct: _i(j['fatPct'], 30),
     addActivityToBudget: j['addActivityToBudget'] == true,
+    fastingEnabled: j['fastingEnabled'] == true,
   );
 
   final Sex sex;
@@ -436,6 +438,12 @@ class Profile {
   /// Das Aktivitätsniveau steckt schon im Grundbedarf. Wer verbrannte
   /// Kalorien zusätzlich gutschreibt, wählt besser „Überwiegend sitzend“.
   final bool addActivityToBudget;
+
+  /// Fasten ist nicht für alle geeignet und deshalb zum Einschalten.
+  final bool fastingEnabled;
+
+  Profile withFastingEnabled(bool enabled) =>
+      Profile.fromJson({...toJson(), 'fastingEnabled': enabled});
 
   Map<String, Object?> toJson() => {
     'id': 'me',
@@ -453,5 +461,165 @@ class Profile {
     'carbsPct': carbsPct,
     'fatPct': fatPct,
     'addActivityToBudget': addActivityToBudget,
+    'fastingEnabled': fastingEnabled,
+  };
+}
+
+/// Zutat eines Rezepts. Die Nährwerte sind eine Momentaufnahme für die Menge.
+class RecipeIngredient {
+  const RecipeIngredient({
+    required this.name,
+    required this.amount,
+    required this.nutrients,
+    this.unit = 'g',
+    this.foodId,
+  });
+
+  factory RecipeIngredient.fromFood(Food food, double amount) =>
+      RecipeIngredient(
+        name: food.name,
+        amount: amount,
+        unit: food.unit,
+        foodId: food.id,
+        nutrients: food.forAmount(amount),
+      );
+
+  factory RecipeIngredient.fromJson(Map<String, Object?> j) => RecipeIngredient(
+    name: '${j['name'] ?? ''}',
+    amount: _d(j['amount']),
+    unit: j['unit'] == 'ml' ? 'ml' : 'g',
+    foodId: j['foodId'] as String?,
+    nutrients: Nutrients.fromJson(_map(j['nutrients'])),
+  );
+
+  final String name, unit;
+  final String? foodId;
+  final double amount;
+  final Nutrients nutrients;
+
+  Map<String, Object?> toJson() => {
+    'name': name,
+    'amount': amount,
+    'unit': unit,
+    'foodId': ?foodId,
+    'nutrients': nutrients.toJson(),
+  };
+}
+
+class Recipe {
+  const Recipe({
+    required this.id,
+    required this.name,
+    required this.servings,
+    required this.ingredients,
+    this.note,
+  });
+
+  factory Recipe.fromJson(Map<String, Object?> j) => Recipe(
+    id: '${j['id']}',
+    name: '${j['name'] ?? ''}',
+    servings: max(1, _i(j['servings'], 1)),
+    note: j['note'] as String?,
+    ingredients: [
+      for (final i in (j['ingredients'] as List? ?? const []))
+        RecipeIngredient.fromJson(_map(i)),
+    ],
+  );
+
+  final String id, name;
+  final int servings;
+  final String? note;
+  final List<RecipeIngredient> ingredients;
+
+  /// Summe der Zutaten. Gramm und Milliliter werden gleichgesetzt; für die
+  /// Portionsrechnung reicht das.
+  double get totalAmount => ingredients.fold(0, (sum, i) => sum + i.amount);
+
+  Nutrients get total =>
+      ingredients.fold(Nutrients.zero, (sum, i) => sum + i.nutrients);
+
+  Nutrients get perServing => total.scaled(1 / servings);
+
+  double get servingAmount => totalAmount / servings;
+
+  /// Das Rezept als Lebensmittel, damit Suche und Tagebuch es wie jedes andere
+  /// behandeln.
+  Food toFood({int lastUsedAt = 0}) => Food(
+    id: foodIdFor(id),
+    name: name,
+    source: FoodSource.recipe,
+    per100: total.scaled(100 / max(totalAmount, 1)),
+    servings: [Serving('1 Portion', servingAmount)],
+    lastUsedAt: lastUsedAt,
+  );
+
+  static String foodIdFor(String recipeId) => 'recipe-$recipeId';
+
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'name': name,
+    'servings': servings,
+    'note': ?note,
+    'ingredients': [for (final i in ingredients) i.toJson()],
+  };
+}
+
+/// Fastenfenster, die die App anbietet. Längeres Fasten gehört in ärztliche
+/// Begleitung und lässt sich hier nicht einstellen.
+const fastingPlans = [14, 16, 18, 20];
+
+class FastingSession {
+  const FastingSession({
+    required this.id,
+    required this.date,
+    required this.startAt,
+    required this.targetHours,
+    this.endAt,
+  });
+
+  factory FastingSession.fromJson(Map<String, Object?> j) => FastingSession(
+    id: '${j['id']}',
+    date: '${j['date']}',
+    startAt: _i(j['startAt']),
+    targetHours: _i(j['targetHours'], 16),
+    endAt: j['endAt'] == null ? null : _i(j['endAt']),
+  );
+
+  final String id, date;
+  final int startAt, targetHours;
+  final int? endAt;
+
+  bool get isActive => endAt == null;
+
+  Duration get target => Duration(hours: targetHours);
+
+  DateTime get start => DateTime.fromMillisecondsSinceEpoch(startAt);
+
+  DateTime get targetEnd => start.add(target);
+
+  Duration elapsed(DateTime now) {
+    final end = endAt == null
+        ? now
+        : DateTime.fromMillisecondsSinceEpoch(endAt!);
+    final d = end.difference(start);
+    return d.isNegative ? Duration.zero : d;
+  }
+
+  double progress(DateTime now) => elapsed(now).inSeconds / target.inSeconds;
+
+  FastingSession ended(int at) => FastingSession(
+    id: id,
+    date: date,
+    startAt: startAt,
+    targetHours: targetHours,
+    endAt: at,
+  );
+
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'date': date,
+    'startAt': startAt,
+    'targetHours': targetHours,
+    'endAt': ?endAt,
   };
 }

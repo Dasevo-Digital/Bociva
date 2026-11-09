@@ -7,6 +7,7 @@ import '../format.dart';
 import '../theme.dart';
 import '../widgets/charts.dart';
 import 'add_food_screen.dart';
+import 'fasting_card.dart';
 import 'food_amount_sheet.dart';
 
 class DiaryScreen extends StatelessWidget {
@@ -75,6 +76,10 @@ class DiaryScreen extends StatelessWidget {
           children: [
             _SummaryCard(day: day),
             const SizedBox(height: 12),
+            if ((app.profile?.fastingEnabled ?? false) && app.isToday) ...[
+              const FastingCard(),
+              const SizedBox(height: 12),
+            ],
             for (final meal in Meal.values) ...[
               _MealCard(meal: meal, day: day),
               const SizedBox(height: 12),

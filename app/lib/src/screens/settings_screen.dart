@@ -12,6 +12,7 @@ import '../format.dart';
 import '../platform/health_bridge.dart';
 import 'connect_screen.dart';
 import 'profile_form.dart';
+import 'recipes_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -33,6 +34,27 @@ class SettingsScreen extends StatelessWidget {
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(builder: (_) => const _ProfileScreen()),
               ),
+            ),
+            ListTile(
+              key: const Key('open-recipes'),
+              leading: const Icon(Icons.menu_book_outlined),
+              title: const Text('Rezepte'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const RecipesScreen()),
+              ),
+            ),
+            SwitchListTile(
+              key: const Key('fasting-toggle'),
+              secondary: const Icon(Icons.timelapse),
+              title: const Text('Intervallfasten'),
+              subtitle: const Text(
+                'Nicht geeignet bei Schwangerschaft, Stillzeit, Essstörungen '
+                'oder unter 18. Bei Diabetes und anderen Erkrankungen bitte '
+                'vorher ärztlich abklären.',
+              ),
+              value: app.profile?.fastingEnabled ?? false,
+              onChanged: app.setFastingEnabled,
             ),
           ]),
           const _ServerSection(),
@@ -297,7 +319,7 @@ class _AiSettingsState extends State<_AiSettings> {
   @override
   void initState() {
     super.initState();
-    final app = ControllerScope.of(context);
+    final app = context.appRead;
     _mode = app.aiMode;
     _url = TextEditingController(text: app.customAi?.baseUrl);
     _model = TextEditingController(text: app.customAi?.model);

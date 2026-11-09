@@ -18,6 +18,7 @@ class _StatsScreenState extends State<StatsScreen> {
   int _days = 7, _loadedVersion = -1, _loadedDays = 0;
   List<DaySummary> _summaries = const [];
   List<WeightEntry> _weights = const [];
+  List<FastingSession> _fasts = const [];
   String? _review;
   bool _reviewing = false;
 
@@ -32,10 +33,15 @@ class _StatsScreenState extends State<StatsScreen> {
       dateKey(today.subtract(const Duration(days: 180))),
       dateKey(today),
     );
+    final fasts = (await app.repo.fastingSessions())
+        .where((f) => !f.isActive)
+        .take(10)
+        .toList();
     if (mounted) {
       setState(() {
         _summaries = summaries;
         _weights = weights;
+        _fasts = fasts;
       });
     }
   }
@@ -206,6 +212,40 @@ class _StatsScreenState extends State<StatsScreen> {
               ),
             ),
           ),
+          if ((app.profile?.fastingEnabled ?? false) && _fasts.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Text('Fasten', style: heading),
+                    ),
+                    for (final f in _fasts)
+                      ListTile(
+                        dense: true,
+                        title: Text(
+                          DateFormat('E, d. MMM', 'de').format(f.start),
+                        ),
+                        subtitle: Text(
+                          '${f.elapsed(DateTime.now()).inHours} h '
+                          '${f.elapsed(DateTime.now()).inMinutes % 60} min '
+                          'von ${f.targetHours} h',
+                        ),
+                        trailing: IconButton(
+                          tooltip: 'Löschen',
+                          icon: const Icon(Icons.delete_outline),
+                          onPressed: () => app.deleteFasting(f.id),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
           if (app.aiDestination != null) ...[
             const SizedBox(height: 12),
             Card(

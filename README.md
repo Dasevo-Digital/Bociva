@@ -10,6 +10,8 @@ Weboberfläche nutzen möchte, betreibt einen eigenen Server.
 - Tagebuch nach Mahlzeiten mit Kalorien, Eiweiß, Kohlenhydraten und Fett
 - Tagesziele nach Mifflin-St Jeor, mit Untergrenze und begrenztem Tempo
 - Wasser, Gewicht, Verlauf über 7 und 30 Tage
+- Rezepte mit Portionsrechnung, die wie Lebensmittel gesucht und eingetragen werden
+- Intervallfasten (zum Einschalten, Zeitfenster 14:10 bis 20:4)
 - Strichcodes und Produktsuche über Open Food Facts, Grundnahrungsmittel offline
 - KI-Analyse von Fotos und Texten, Auswertung des Verlaufs
 - Aktivität aus Apple Health und Health Connect, FIT-Import aus Garmin Connect

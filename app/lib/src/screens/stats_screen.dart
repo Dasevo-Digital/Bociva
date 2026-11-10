@@ -205,7 +205,7 @@ class _StatsScreenState extends State<StatsScreen> {
                     const SizedBox(height: 12),
                     LineChart(
                       values: [for (final w in _weights) w.kg],
-                      color: BocivaColors.apricot,
+                      color: BocivaColors.coral,
                     ),
                   ],
                 ],

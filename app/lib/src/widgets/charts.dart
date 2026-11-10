@@ -51,7 +51,7 @@ class _RingPainter extends CustomPainter {
         -pi / 2,
         2 * pi * fraction,
         false,
-        track..color = over ? const Color(0xFFFFB4A1) : BocivaColors.apricot,
+        track..color = over ? const Color(0xFFFFB4A1) : BocivaColors.coral,
       );
     }
   }
@@ -158,7 +158,7 @@ class _BarPainter extends CustomPainter {
     if (goal != null && goal! > 0) {
       final y = chart - goal! / top * chart;
       final line = Paint()
-        ..color = BocivaColors.apricot
+        ..color = BocivaColors.coral
         ..strokeWidth = 1.5;
       for (double x = 0; x < size.width; x += 8) {
         canvas.drawLine(Offset(x, y), Offset(x + 4, y), line);

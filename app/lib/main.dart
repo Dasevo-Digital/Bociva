@@ -7,6 +7,7 @@ import 'src/screens/connect_screen.dart';
 import 'src/screens/onboarding_screen.dart';
 import 'src/screens/shell.dart';
 import 'src/theme.dart';
+import 'src/widgets/brand.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -46,9 +47,7 @@ class BocivaApp extends StatelessWidget {
             return _StartError(controller: controller);
           }
           if (!controller.ready) {
-            return const Scaffold(
-              body: Center(child: CircularProgressIndicator()),
-            );
+            return const Scaffold(body: Center(child: Mascot(height: 140)));
           }
           if (controller.mustConnect) return const ConnectScreen(webMode: true);
           if (controller.awaitingFirstSync) {
@@ -133,6 +132,8 @@ class _FirstSync extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              const Mascot(height: 150),
+              const SizedBox(height: 24),
               if (error == null) ...[
                 const CircularProgressIndicator(),
                 const SizedBox(height: 16),

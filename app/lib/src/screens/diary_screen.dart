@@ -105,8 +105,15 @@ class _SummaryCard extends StatelessWidget {
     final over = remaining < 0;
     const light = TextStyle(color: Colors.white);
     return Card(
-      color: BocivaColors.pine,
-      child: Padding(
+      clipBehavior: Clip.antiAlias,
+      child: Ink(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [BocivaColors.forest, BocivaColors.forestDeep],
+          ),
+        ),
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
@@ -410,7 +417,7 @@ class _ActivityCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Icon(Icons.directions_run, color: BocivaColors.apricot),
+                const Icon(Icons.directions_run, color: BocivaColors.coral),
                 const SizedBox(width: 8),
                 Text(
                   'Aktivität',

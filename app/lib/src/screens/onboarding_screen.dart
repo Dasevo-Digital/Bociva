@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../widgets/brand.dart';
 import 'connect_screen.dart';
 import 'profile_form.dart';
 
@@ -17,13 +18,19 @@ class OnboardingScreen extends StatelessWidget {
           child: ListView(
             padding: const EdgeInsets.all(20),
             children: [
-              Text(
-                'Bociva',
-                style: TextStyle(
-                  fontSize: 34,
-                  fontWeight: FontWeight.w800,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
+              const Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    // Auf schmalen Telefonen kleiner statt überzulaufen.
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: BrandWordmark(width: 190),
+                    ),
+                  ),
+                  Mascot(height: 140),
+                ],
               ),
               const SizedBox(height: 6),
               const Text(

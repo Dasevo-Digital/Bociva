@@ -51,7 +51,7 @@ class _FastingCardState extends State<FastingCard> {
         child: session == null
             ? Row(
                 children: [
-                  const Icon(Icons.timelapse, color: BocivaColors.apricot),
+                  const Icon(Icons.timelapse, color: BocivaColors.coral),
                   const SizedBox(width: 8),
                   Expanded(child: Text('Intervallfasten', style: title)),
                   FilledButton.tonal(
@@ -66,7 +66,7 @@ class _FastingCardState extends State<FastingCard> {
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.timelapse, color: BocivaColors.apricot),
+                      const Icon(Icons.timelapse, color: BocivaColors.coral),
                       const SizedBox(width: 8),
                       Expanded(child: Text('Fasten läuft', style: title)),
                       Text(
@@ -79,7 +79,7 @@ class _FastingCardState extends State<FastingCard> {
                   const SizedBox(height: 10),
                   ProgressLine(
                     fraction: session.progress(now),
-                    color: BocivaColors.apricot,
+                    color: BocivaColors.coral,
                   ),
                   const SizedBox(height: 10),
                   Row(

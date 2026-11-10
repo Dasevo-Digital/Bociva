@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../controller.dart';
+import '../widgets/brand.dart';
 
 /// Anmeldung am Bociva-Server. Im Browser ist es immer der ausliefernde
 /// Server, in der App wird die Adresse eingegeben.
@@ -116,16 +117,10 @@ class _ConnectScreenState extends State<ConnectScreen> {
           padding: const EdgeInsets.all(24),
           children: [
             if (widget.webMode) ...[
-              Text(
-                'Bociva',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 34,
-                  fontWeight: FontWeight.w800,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-              ),
+              const Mascot(height: 150),
               gap,
+              const Center(child: BrandWordmark(width: 180)),
+              const SizedBox(height: 24),
             ],
             if (_setup)
               const Padding(

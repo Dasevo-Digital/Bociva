@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 
 abstract final class BocivaColors {
-  static const pine = Color(0xFF24574A);
-  static const mint = Color(0xFFBFE3D0);
-  static const apricot = Color(0xFFEE9153);
-  static const paper = Color(0xFFF6F2E9);
-  static const ink = Color(0xFF17231F);
+  // Aus dem Markenbild: Schriftzug, Blatt, Apfel.
+  static const forest = Color(0xFF1C6631);
+  static const forestDeep = Color(0xFF0E4A1E);
+  static const leaf = Color(0xFF6DB33F);
+  static const mint = Color(0xFFB8E3B0);
+  static const coral = Color(0xFFF2735A);
+  static const paper = Color(0xFFFBF7F1);
+  static const ink = Color(0xFF14211A);
   static const protein = Color(0xFFB4506F);
   static const carbs = Color(0xFFD99A26);
   static const fat = Color(0xFF3D8AA1);
@@ -16,13 +19,13 @@ ThemeData bocivaTheme(Brightness brightness) {
   final dark = brightness == Brightness.dark;
   final scheme =
       ColorScheme.fromSeed(
-        seedColor: BocivaColors.pine,
+        seedColor: BocivaColors.forest,
         brightness: brightness,
       ).copyWith(
-        primary: dark ? BocivaColors.mint : BocivaColors.pine,
+        primary: dark ? BocivaColors.mint : BocivaColors.forest,
         onPrimary: dark ? BocivaColors.ink : Colors.white,
-        tertiary: BocivaColors.apricot,
-        surface: dark ? const Color(0xFF111B18) : BocivaColors.paper,
+        tertiary: BocivaColors.coral,
+        surface: dark ? const Color(0xFF101A14) : BocivaColors.paper,
       );
   return ThemeData(
     colorScheme: scheme,
@@ -40,14 +43,14 @@ ThemeData bocivaTheme(Brightness brightness) {
       ),
     ),
     cardTheme: CardThemeData(
-      color: dark ? const Color(0xFF1A2925) : Colors.white,
+      color: dark ? const Color(0xFF19271F) : Colors.white,
       elevation: 0,
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: dark ? const Color(0xFF1A2925) : Colors.white,
+      fillColor: dark ? const Color(0xFF19271F) : Colors.white,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
         borderSide: BorderSide.none,
@@ -62,6 +65,22 @@ ThemeData bocivaTheme(Brightness brightness) {
           fontSize: 16,
         ),
       ),
+    ),
+    navigationBarTheme: NavigationBarThemeData(
+      backgroundColor: dark ? const Color(0xFF16231B) : Colors.white,
+      indicatorColor: dark
+          ? BocivaColors.forest
+          : BocivaColors.leaf.withValues(alpha: 0.28),
+    ),
+    navigationRailTheme: NavigationRailThemeData(
+      backgroundColor: dark ? const Color(0xFF16231B) : Colors.white,
+      indicatorColor: dark
+          ? BocivaColors.forest
+          : BocivaColors.leaf.withValues(alpha: 0.28),
+    ),
+    floatingActionButtonTheme: const FloatingActionButtonThemeData(
+      backgroundColor: BocivaColors.coral,
+      foregroundColor: Colors.white,
     ),
     snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating),
   );

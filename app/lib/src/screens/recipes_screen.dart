@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../controller.dart';
 import '../format.dart';
+import '../widgets/brand.dart';
 import 'add_food_screen.dart';
 
 class RecipesScreen extends StatefulWidget {
@@ -44,13 +45,12 @@ class _RecipesScreenState extends State<RecipesScreen> {
     ),
     body: _recipes.isEmpty
         ? const Center(
-            child: Padding(
-              padding: EdgeInsets.all(32),
-              child: Text(
-                'Lege Gerichte an, die du öfter kochst. Sie erscheinen dann '
-                'bei der Lebensmittelsuche und lassen sich als Portion '
-                'eintragen.',
-                textAlign: TextAlign.center,
+            child: SingleChildScrollView(
+              child: MascotHint(
+                text:
+                    'Lege Gerichte an, die du öfter kochst. Sie erscheinen dann '
+                    'bei der Lebensmittelsuche und lassen sich als Portion '
+                    'eintragen.',
               ),
             ),
           )

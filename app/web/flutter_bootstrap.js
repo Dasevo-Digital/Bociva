@@ -9,5 +9,7 @@ _flutter.loader.load({
       fontFallbackBaseUrl: 'fonts/',
     });
     await appRunner.runApp();
+    // Das Startbild verschwindet, sobald die App läuft.
+    document.getElementById('splash')?.remove();
   },
 });

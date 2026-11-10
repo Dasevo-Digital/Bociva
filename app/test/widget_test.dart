@@ -200,8 +200,8 @@ void main() {
         home: const Scaffold(
           body: Column(
             children: [
-              BarChart(values: [], labels: [], color: BocivaColors.pine),
-              LineChart(values: [70], color: BocivaColors.apricot),
+              BarChart(values: [], labels: [], color: BocivaColors.forest),
+              LineChart(values: [70], color: BocivaColors.coral),
               CalorieRing(fraction: 2, over: true, child: Text('x')),
             ],
           ),

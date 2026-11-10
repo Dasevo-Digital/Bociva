@@ -48,6 +48,8 @@ hooks:
       source: sqlite3mc
 
 flutter:
+  assets:
+    - assets/brand/
   uses-material-design: true
   fonts:
     - family: Nunito

@@ -12,6 +12,10 @@ RUN dart build cli -t bin/server.dart -o /out \
     && mkdir -p /out/data /out/keys \
     && if [ -f web/index.html ]; then cp -R web /out/bundle/web; fi
 
+# Nur das Programmpaket, für die Installation ohne Docker (deploy/lxc).
+FROM scratch AS bundle
+COPY --from=build /out/bundle /bundle
+
 # Distroless: nur glibc und CA-Zertifikate, keine Shell.
 FROM gcr.io/distroless/cc-debian12@sha256:e5d81ddde149641e2a9ba55be4545bc125c67de07508b03ba4c22e6eb0ded5aa
 COPY --from=build /out/bundle /opt/bociva

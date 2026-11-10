@@ -152,8 +152,8 @@ class ChatCompletionsClient implements AiBackend {
                 'authorization': 'Bearer ${config.apiKey}',
             },
             body: jsonEncode({
+              // Keine temperature: Manche neueren Modelle lehnen den Wert ab.
               'model': config.model,
-              'temperature': 0.2,
               'messages': messages,
             }),
           )

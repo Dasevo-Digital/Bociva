@@ -609,6 +609,8 @@ Klar! ```json
           expect(r.headers['authorization'], 'Bearer k');
           final body = jsonDecode(r.body) as Map;
           expect(body['model'], 'vision');
+          // Manche Modelle lehnen Anfragen mit temperature ab.
+          expect(body.containsKey('temperature'), isFalse);
           expect(
             jsonEncode(body['messages']),
             contains('data:image/png;base64'),

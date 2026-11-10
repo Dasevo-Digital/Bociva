@@ -11,6 +11,10 @@ class ServerConfig {
     this.trustProxy = false,
     this.foodContact,
     this.inMemory = false,
+    this.aiDailyLimit = 500,
+    this.userQuotaMb = 200,
+    this.bodyIdleTimeout = const Duration(seconds: 30),
+    this.bodyTotalTimeout = const Duration(seconds: 120),
   });
 
   factory ServerConfig.fromEnvironment(Map<String, String> env) {
@@ -25,6 +29,8 @@ class ServerConfig {
       webDir: env['BOCIVA_WEB_DIR'],
       trustProxy: env['BOCIVA_TRUST_PROXY'] == 'true',
       foodContact: env['BOCIVA_FOOD_CONTACT'],
+      aiDailyLimit: int.tryParse(env['BOCIVA_AI_DAILY_LIMIT'] ?? '') ?? 500,
+      userQuotaMb: int.tryParse(env['BOCIVA_USER_QUOTA_MB'] ?? '') ?? 200,
       ai: aiUrl != null && aiModel != null
           ? AiConfig(
               baseUrl: aiUrl,
@@ -45,4 +51,15 @@ class ServerConfig {
 
   /// Für Tests.
   final bool inMemory;
+
+  /// KI-Anfragen pro Tag für alle Konten zusammen; jede kostet Rechenzeit
+  /// oder Geld beim Anbieter.
+  final int aiDailyLimit;
+
+  /// Speicherplatz pro Konto in MB.
+  final int userQuotaMb;
+
+  /// Wie lange ein Request-Body ins Stocken geraten bzw. insgesamt dauern
+  /// darf. Sonst hielten halbe Anfragen Verbindungen unbegrenzt offen.
+  final Duration bodyIdleTimeout, bodyTotalTimeout;
 }

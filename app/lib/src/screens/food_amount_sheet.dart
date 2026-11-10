@@ -47,7 +47,7 @@ class _FoodAmountSheetState extends State<_FoodAmountSheet> {
   void initState() {
     super.initState();
     final first = widget.food.servings.firstOrNull;
-    _amount = TextEditingController(text: fmtOne(first?.amount ?? 100));
+    _amount = TextEditingController(text: fmtInput(first?.amount ?? 100));
     _amount.addListener(() => setState(() {}));
   }
 
@@ -97,7 +97,7 @@ class _FoodAmountSheetState extends State<_FoodAmountSheet> {
                 for (final s in food.servings)
                   ActionChip(
                     label: Text(s.name),
-                    onPressed: () => _amount.text = fmtOne(s.amount),
+                    onPressed: () => _amount.text = fmtInput(s.amount),
                   ),
               ],
             ),
@@ -180,7 +180,9 @@ class _EntrySheet extends StatefulWidget {
 }
 
 class _EntrySheetState extends State<_EntrySheet> {
-  late final _amount = TextEditingController(text: fmtOne(widget.entry.amount));
+  late final _amount = TextEditingController(
+    text: fmtInput(widget.entry.amount),
+  );
 
   @override
   void dispose() {

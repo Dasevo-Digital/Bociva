@@ -48,7 +48,7 @@ class _StatsScreenState extends State<StatsScreen> {
 
   Future<void> _addWeight(AppController app) async {
     final controller = TextEditingController(
-      text: _weights.isNotEmpty ? fmtOne(_weights.last.kg) : '',
+      text: _weights.isNotEmpty ? fmtInput(_weights.last.kg) : '',
     );
     final kg = await showDialog<double>(
       context: context,

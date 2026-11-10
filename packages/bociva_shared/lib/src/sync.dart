@@ -5,25 +5,44 @@ class SyncResponse {
     required this.cursor,
     required this.changes,
     required this.hasMore,
+    this.rejected = 0,
   });
 
-  factory SyncResponse.fromJson(Map<String, Object?> j) => SyncResponse(
-    cursor: (j['cursor'] as num).toInt(),
-    hasMore: j['hasMore'] == true,
-    changes: [
-      for (final c in j['changes'] as List)
-        SyncRecord.fromJson((c as Map).cast<String, Object?>()),
-    ],
-  );
+  /// Wirft [FormatException], wenn die Antwort nicht passt, z. B. weil ein
+  /// Proxy davor etwas anderes liefert.
+  factory SyncResponse.fromJson(Map<String, Object?> j) {
+    final cursor = j['cursor'];
+    final changes = j['changes'];
+    if (cursor is! num || changes is! List) {
+      throw const FormatException('Unerwartete Antwort beim Abgleich.');
+    }
+    try {
+      return SyncResponse(
+        cursor: cursor.toInt(),
+        hasMore: j['hasMore'] == true,
+        rejected: (j['rejected'] as num?)?.toInt() ?? 0,
+        changes: [
+          for (final c in changes)
+            SyncRecord.fromJson((c as Map).cast<String, Object?>()),
+        ],
+      );
+    } on TypeError {
+      throw const FormatException('Unerwartete Antwort beim Abgleich.');
+    }
+  }
 
   final int cursor;
   final bool hasMore;
   final List<SyncRecord> changes;
 
+  /// Datensätze, die der Server nicht angenommen hat.
+  final int rejected;
+
   Map<String, Object?> toJson() => {
     'cursor': cursor,
     'hasMore': hasMore,
     'changes': [for (final c in changes) c.toJson()],
+    if (rejected > 0) 'rejected': rejected,
   };
 }
 
@@ -43,17 +62,28 @@ class SyncEngine {
   final SyncTransport transport;
   bool _running = false;
 
+  /// Datensätze des letzten Laufs, die nicht übertragen werden konnten. Sie
+  /// bleiben auf dem Gerät, blockieren den Abgleich aber nicht.
+  int rejected = 0;
+
   /// Führt einen Abgleich aus und meldet die Zahl übernommener Datensätze.
   /// Läuft schon einer, passiert nichts.
   Future<int> run() async {
     if (_running) return 0;
     _running = true;
+    rejected = 0;
     try {
       var cursor = int.tryParse(await store.meta(_cursorKey) ?? '') ?? 0;
       var applied = 0;
       while (true) {
         final batch = await store.dirty(limit: batchSize);
-        final response = await transport.exchange(cursor, batch);
+        final sendable = [
+          for (final r in batch)
+            if (recordProblem(r) == null) r,
+        ];
+        rejected += batch.length - sendable.length;
+        final response = await transport.exchange(cursor, sendable);
+        rejected += response.rejected;
         await store.clearDirty(batch);
         for (final incoming in response.changes) {
           if (await _apply(incoming)) applied++;

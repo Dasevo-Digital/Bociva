@@ -124,15 +124,21 @@ class _RecipeEditScreenState extends State<RecipeEditScreen> {
       return;
     }
     final navigator = Navigator.of(context);
-    await context.app.saveRecipe(
-      Recipe(
-        id: widget.recipe?.id ?? newId(),
-        name: _name.text.trim(),
-        servings: _servingCount!,
-        note: _note.text.trim().isEmpty ? null : _note.text.trim(),
-        ingredients: _ingredients,
-      ),
-    );
+    try {
+      await context.app.saveRecipe(
+        Recipe(
+          id: widget.recipe?.id ?? newId(),
+          name: _name.text.trim(),
+          servings: _servingCount!,
+          note: _note.text.trim().isEmpty ? null : _note.text.trim(),
+          ingredients: _ingredients,
+        ),
+      );
+    } on InvalidRecordException catch (e) {
+      // Etwa sehr viele Zutaten: Der Server nähme das Rezept nicht an.
+      if (mounted) setState(() => _error = '$e');
+      return;
+    }
     navigator.pop();
   }
 
@@ -255,6 +261,7 @@ class _RecipeEditScreenState extends State<RecipeEditScreen> {
             TextFormField(
               controller: _note,
               maxLines: 4,
+              maxLength: 4000,
               decoration: const InputDecoration(
                 labelText: 'Zubereitung (optional)',
               ),

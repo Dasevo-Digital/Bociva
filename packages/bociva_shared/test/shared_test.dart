@@ -275,6 +275,71 @@ void main() {
       seq = 0;
     });
 
+    test(
+      'ein nicht sendbarer Datensatz blockiert den Abgleich nicht',
+      () async {
+        final store = MemoryStore();
+        await BocivaRepository(store).addWater('2026-11-09', 300);
+        // Zum Beispiel von einer älteren App-Version gespeichert.
+        await store.put(
+          const SyncRecord(
+            kind: 'water',
+            id: 'kaputt',
+            updatedAt: 1,
+            data: {'ml': double.nan},
+          ),
+          dirty: true,
+        );
+        final engine = SyncEngine(store, fakeServer());
+        await engine.run();
+        expect(engine.rejected, 1);
+        expect(serverRecords.single.data['ml'], 300);
+        expect(await store.dirty(), isEmpty);
+      },
+    );
+
+    test('vom Server abgelehnte Datensätze werden gemeldet', () async {
+      final store = MemoryStore();
+      await BocivaRepository(store).addWater('2026-11-09', 300);
+      final engine = SyncEngine(
+        store,
+        _Fake(
+          (since, changes) => SyncResponse(
+            cursor: 1,
+            changes: const [],
+            hasMore: false,
+            rejected: changes.length,
+          ),
+        ),
+      );
+      await engine.run();
+      expect(engine.rejected, 1);
+      expect(await store.dirty(), isEmpty);
+    });
+
+    test('HTML statt JSON wird ein ApiException', () async {
+      final client = ApiClient(
+        Uri.parse('https://bociva.example'),
+        token: 't',
+        client: MockClient(
+          (r) async => http.Response('<html>Anmelden</html>', 200),
+        ),
+      );
+      await expectLater(
+        client.exchange(0, const []),
+        throwsA(isA<ApiException>()),
+      );
+      final wrongShape = ApiClient(
+        Uri.parse('https://bociva.example'),
+        token: 't',
+        client: MockClient((r) async => http.Response('{"cursor":"x"}', 200)),
+      );
+      await expectLater(
+        wrongShape.exchange(0, const []),
+        throwsA(isA<ApiException>()),
+      );
+    });
+
     test('Daten kommen von Gerät A auf Gerät B', () async {
       final a = MemoryStore();
       final b = MemoryStore();
@@ -327,6 +392,135 @@ void main() {
       expect((await store.get('water', 'a'))!.data['ml'], 3);
       expect(await store.isDirty('water', 'a'), isTrue);
     });
+  });
+
+  group('Datenschutz vor Überschreiben', () {
+    const apple = Food(
+      id: 'apfel',
+      name: 'Apfel',
+      per100: Nutrients(kcal: 52, protein: 0.3, carbs: 14, fat: 0.2),
+    );
+
+    test(
+      'Eintragen schreibt ein gespeichertes Lebensmittel nicht neu',
+      () async {
+        final store = MemoryStore();
+        final repo = BocivaRepository(store);
+        await repo.saveFood(apple);
+        final before = await store.get(RecordKind.food, 'apfel');
+        // Eine alte Kopie, z. B. aus einer Suchliste von vorhin.
+        await repo.logFood(
+          const Food(id: 'apfel', name: 'Alt', per100: Nutrients()),
+          date: '2026-11-10',
+          meal: Meal.snack,
+          amount: 100,
+        );
+        final after = await store.get(RecordKind.food, 'apfel');
+        expect(after!.updatedAt, before!.updatedAt);
+        expect(after.data['name'], 'Apfel');
+        expect((await repo.recentFoods()).single.id, 'apfel');
+      },
+    );
+
+    test('Eintragen holt ein gelöschtes Lebensmittel nicht zurück', () async {
+      final store = MemoryStore();
+      final repo = BocivaRepository(store);
+      await repo.saveFood(apple);
+      await repo.deleteFood('apfel');
+      await repo.logFood(
+        apple,
+        date: '2026-11-10',
+        meal: Meal.snack,
+        amount: 100,
+      );
+      expect(await repo.savedFoods(), isEmpty);
+      expect((await repo.diary('2026-11-10')).single.name, 'Apfel');
+    });
+
+    test('Zuletzt genutzt folgt dem Tagebuch', () async {
+      var now = DateTime(2026, 11, 10, 8);
+      final repo = BocivaRepository(MemoryStore(), clock: () => now);
+      const pear = Food(id: 'birne', name: 'Birne', per100: Nutrients());
+      await repo.logFood(
+        apple,
+        date: '2026-11-10',
+        meal: Meal.snack,
+        amount: 1,
+      );
+      now = now.add(const Duration(hours: 1));
+      await repo.logFood(pear, date: '2026-11-10', meal: Meal.snack, amount: 1);
+      now = now.add(const Duration(hours: 1));
+      await repo.logFood(
+        apple,
+        date: '2026-11-10',
+        meal: Meal.snack,
+        amount: 1,
+      );
+      expect(
+        [for (final f in await repo.recentFoods()) f.id],
+        ['apfel', 'birne'],
+      );
+    });
+
+    test(
+      'Gewicht ändert das Profil nicht, die Ziele gehen trotzdem mit',
+      () async {
+        final store = MemoryStore();
+        final repo = BocivaRepository(store);
+        await repo.saveProfile(
+          const Profile(
+            sex: Sex.female,
+            birthYear: 1990,
+            heightCm: 170,
+            weightKg: 70,
+            fastingEnabled: true,
+          ),
+        );
+        final before = await store.get(RecordKind.profile, 'me');
+        await repo.saveWeight(const WeightEntry(date: '2026-11-01', kg: 68));
+        await repo.saveWeight(const WeightEntry(date: '2026-10-01', kg: 75));
+        final after = await store.get(RecordKind.profile, 'me');
+        expect(after!.updatedAt, before!.updatedAt);
+        final p = (await repo.profile())!;
+        expect(p.weightKg, 68);
+        expect(p.fastingEnabled, isTrue);
+      },
+    );
+
+    test(
+      'Ungültige Zahlen und zu große Einträge werden nicht gespeichert',
+      () async {
+        final store = MemoryStore();
+        final repo = BocivaRepository(store);
+        await expectLater(
+          repo.logFood(
+            apple,
+            date: '2026-11-10',
+            meal: Meal.snack,
+            amount: double.nan,
+          ),
+          throwsA(isA<InvalidRecordException>()),
+        );
+        await expectLater(
+          repo.saveRecipe(
+            Recipe(
+              id: 'r',
+              name: 'Groß',
+              servings: 1,
+              ingredients: const [],
+              note: 'x' * 70000,
+            ),
+          ),
+          throwsA(isA<InvalidRecordException>()),
+        );
+        expect(await store.dirty(), isEmpty);
+        expect(Nutrients.fromJson({'kcal': 'NaN'}).kcal, 0);
+        expect(
+          Profile.fromJson({'waterOverrideMl': 'Infinity'}).waterOverrideMl,
+          isNull,
+        );
+      },
+    );
   });
 
   group('Open Food Facts', () {

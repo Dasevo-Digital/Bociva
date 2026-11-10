@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'basic_foods.dart';
 import 'goals.dart';
 import 'models.dart';
@@ -26,16 +28,18 @@ class BocivaRepository {
     if (existing != null && existing.updatedAt >= stamp) {
       stamp = existing.updatedAt + 1;
     }
-    await store.put(
-      SyncRecord(
-        kind: kind,
-        id: id,
-        updatedAt: stamp,
-        data: deleted ? const {} : data,
-        deleted: deleted,
-      ),
-      dirty: true,
+    final record = SyncRecord(
+      kind: kind,
+      id: id,
+      updatedAt: stamp,
+      data: deleted ? const {} : data,
+      deleted: deleted,
     );
+    // Was der Server ablehnen würde, wird gar nicht erst gespeichert.
+    if (recordProblem(record) case final problem?) {
+      throw InvalidRecordException(problem);
+    }
+    await store.put(record, dirty: true);
   }
 
   Future<void> _delete(String kind, String id) =>
@@ -43,9 +47,17 @@ class BocivaRepository {
 
   // Profil
 
+  /// Das Gewicht kommt aus dem jüngsten Gewichtseintrag. So muss ein neuer
+  /// Eintrag das Profil nicht umschreiben, was auf einem zweiten Gerät neuere
+  /// Ziele mit einer alten Kopie überschreiben könnte.
   Future<Profile?> profile() async {
     final r = await store.get(RecordKind.profile, 'me');
-    return r == null || r.deleted ? null : Profile.fromJson(r.data);
+    if (r == null || r.deleted) return null;
+    final latest = await latestWeight();
+    return Profile.fromJson({
+      ...r.data,
+      if (latest != null) 'weightKg': latest.kg,
+    });
   }
 
   Future<void> saveProfile(Profile p) =>
@@ -86,7 +98,12 @@ class BocivaRepository {
       estimated: food.source == FoodSource.ai,
     );
     await saveDiary(entry);
-    await saveFood(food.copyWith(lastUsedAt: nowMs));
+    // Nur beim ersten Mal speichern. Wie oft und wann ein Lebensmittel genutzt
+    // wird, steht im Tagebuch; ein Neuschreiben hier überschriebe Änderungen
+    // von anderen Geräten oder holte Gelöschtes zurück.
+    if (await store.get(RecordKind.food, food.id) == null) {
+      await saveFood(food.copyWith(lastUsedAt: entry.createdAt));
+    }
     return entry;
   }
 
@@ -100,9 +117,27 @@ class BocivaRepository {
     for (final r in await store.all(RecordKind.food)) Food.fromJson(r.data),
   ];
 
+  /// Wann jedes Lebensmittel zuletzt eingetragen wurde, aus dem Tagebuch der
+  /// letzten 90 Tage, sonst aus dem Zeitpunkt der ersten Nutzung.
+  Future<Map<String, int>> _lastUse(List<Food> foods) async {
+    final now = _clock();
+    final from = dateKey(DateTime(now.year, now.month, now.day - 90));
+    final used = {for (final f in foods) f.id: f.lastUsedAt};
+    for (final r in await store.byDate(RecordKind.diary, from, '9999-12-31')) {
+      final foodId = r.data['foodId'];
+      final at = r.data['createdAt'];
+      if (foodId is String && at is num && used.containsKey(foodId)) {
+        used[foodId] = max(used[foodId]!, at.toInt());
+      }
+    }
+    return used;
+  }
+
   Future<List<Food>> recentFoods({int limit = 30}) async {
-    final foods = (await savedFoods()).where((f) => f.lastUsedAt > 0).toList()
-      ..sort((a, b) => b.lastUsedAt.compareTo(a.lastUsedAt));
+    final saved = await savedFoods();
+    final used = await _lastUse(saved);
+    final foods = saved.where((f) => used[f.id]! > 0).toList()
+      ..sort((a, b) => used[b.id]!.compareTo(used[a.id]!));
     return foods.take(limit).toList();
   }
 
@@ -122,7 +157,8 @@ class BocivaRepository {
     final q = query.trim().toLowerCase();
     if (q.isEmpty) return const [];
     final saved = await savedFoods();
-    final seen = saved.map((f) => f.id).toSet();
+    final used = await _lastUse(saved);
+    final seen = used.keys.toSet();
     final all = [...saved, ...basicFoods.where((f) => !seen.contains(f.id))];
     int score(Food f) {
       final n = f.name.toLowerCase();
@@ -142,7 +178,7 @@ class BocivaRepository {
         .toList()
       ..sort((a, b) {
         final s = score(a).compareTo(score(b));
-        return s != 0 ? s : b.lastUsedAt.compareTo(a.lastUsedAt);
+        return s != 0 ? s : (used[b.id] ?? 0).compareTo(used[a.id] ?? 0);
       });
   }
 
@@ -179,15 +215,20 @@ class BocivaRepository {
     return list;
   }
 
-  /// Der neueste Wert des Tages ersetzt den vorherigen. Trägt das aktuelle
-  /// Gewicht auch ins Profil ein, damit die Ziele mitgehen.
-  Future<void> saveWeight(WeightEntry e) async {
-    await _put(RecordKind.weight, e.date, e.toJson());
-    final latest = await weights('0000-00-00', '9999-99-99');
-    final p = await profile();
-    if (p != null && latest.isNotEmpty && latest.last.date == e.date) {
-      await saveProfile(Profile.fromJson({...p.toJson(), 'weightKg': e.kg}));
+  /// Der neueste Wert des Tages ersetzt den vorherigen. Die Ziele gehen über
+  /// [profile] mit.
+  Future<void> saveWeight(WeightEntry e) =>
+      _put(RecordKind.weight, e.date, e.toJson());
+
+  Future<WeightEntry?> latestWeight() async {
+    WeightEntry? latest;
+    for (final r in await store.all(RecordKind.weight)) {
+      final e = WeightEntry.fromJson(r.data);
+      if (e.kg > 0 && (latest == null || e.date.compareTo(latest.date) > 0)) {
+        latest = e;
+      }
     }
+    return latest;
   }
 
   Future<void> deleteWeight(String date) => _delete(RecordKind.weight, date);

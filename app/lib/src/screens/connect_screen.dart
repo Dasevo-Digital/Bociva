@@ -20,16 +20,28 @@ class _ConnectScreenState extends State<ConnectScreen> {
   final _password = TextEditingController();
   final _code = TextEditingController();
   bool _register = false, _keepLocal = true, _busy = false, _setup = false;
-  int _local = 0;
+  int _local = 0, _pending = 0;
   String? _error;
+
+  /// Konto, zu dem die Daten auf diesem Gerät gehören.
+  late final String? _previous = context.appRead.previousAccount;
 
   @override
   void initState() {
     super.initState();
+    // Daten eines anderen Kontos nur auf ausdrücklichen Wunsch übernehmen.
+    _keepLocal = _previous == null;
     if (widget.webMode) _detectSetup();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final count = await context.app.localRecordCount();
-      if (mounted) setState(() => _local = count);
+      final app = context.appRead;
+      final count = await app.localRecordCount();
+      final pending = await app.pendingChanges();
+      if (mounted) {
+        setState(() {
+          _local = count;
+          _pending = pending;
+        });
+      }
     });
   }
 
@@ -48,6 +60,19 @@ class _ConnectScreenState extends State<ConnectScreen> {
   }
 
   Uri get _webBase => Uri.parse(Uri.base.origin);
+
+  String? get _keepHint => switch ((_previous, _keepLocal)) {
+    (null, true) => null,
+    (null, false) =>
+      'Die Einträge auf diesem Gerät werden gelöscht und durch die des '
+          'Kontos ersetzt.',
+    (_, true) =>
+      'Nur wählen, wenn diese Daten dir gehören. Sie werden mit dem Konto '
+          'zusammengeführt.',
+    (_, false) =>
+      'Bei demselben Konto bleibt alles erhalten. Bei einem anderen werden '
+          'die Einträge dieses Geräts durch die des Kontos ersetzt.',
+  };
 
   @override
   void dispose() {
@@ -160,16 +185,26 @@ class _ConnectScreenState extends State<ConnectScreen> {
                 value: _register,
                 onChanged: (v) => setState(() => _register = v),
               ),
+            if (widget.webMode && _pending > 0)
+              Padding(
+                key: const Key('connect-pending'),
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(
+                  '$_pending ${_pending == 1 ? 'Änderung ist' : 'Änderungen sind'} '
+                  'noch nicht auf dem Server. Melde dich mit demselben Konto '
+                  'wieder an, damit nichts verloren geht.',
+                ),
+              ),
             if (!kIsWeb && _local > 0)
               CheckboxListTile(
+                key: const Key('connect-keep-local'),
                 contentPadding: EdgeInsets.zero,
-                title: const Text('Daten dieses Geräts ins Konto übernehmen'),
-                subtitle: _keepLocal
-                    ? null
-                    : const Text(
-                        'Die Einträge auf diesem Gerät werden gelöscht und '
-                        'durch die des Kontos ersetzt.',
-                      ),
+                title: Text(
+                  _previous == null
+                      ? 'Daten dieses Geräts ins Konto übernehmen'
+                      : 'Daten von $_previous in dieses Konto übernehmen',
+                ),
+                subtitle: _keepHint == null ? null : Text(_keepHint!),
                 value: _keepLocal,
                 onChanged: (v) => setState(() => _keepLocal = v!),
               ),

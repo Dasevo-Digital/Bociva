@@ -158,6 +158,35 @@ class _ProfileScreen extends StatelessWidget {
 class _ServerSection extends StatelessWidget {
   const _ServerSection();
 
+  Future<void> _logout(BuildContext context, AppController app) async {
+    if (await app.disconnect()) return;
+    if (!context.mounted) return;
+    final pending = await app.pendingChanges();
+    if (!context.mounted) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Trotzdem abmelden?'),
+        content: Text(
+          '$pending ${pending == 1 ? 'Änderung ist' : 'Änderungen sind'} noch '
+          'nicht auf dem Server und ${pending == 1 ? 'geht' : 'gehen'} beim '
+          'Abmelden verloren.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Abmelden'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) await app.disconnect(force: true);
+  }
+
   Future<void> _invite(BuildContext context, AppController app) async {
     try {
       final code = await app.createInvite();
@@ -293,7 +322,7 @@ class _ServerSection extends StatelessWidget {
         subtitle: kIsWeb
             ? null
             : const Text('Die Daten bleiben auf diesem Gerät.'),
-        onTap: app.disconnect,
+        onTap: () => _logout(context, app),
       ),
       ListTile(
         leading: const Icon(Icons.delete_forever_outlined),

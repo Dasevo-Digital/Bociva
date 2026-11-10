@@ -1,16 +1,62 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:bociva_shared/bociva_shared.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqlite3/sqlite3.dart';
 
-Future<LocalStore> openLocalStore(Future<String> Function() key) async {
+import 'store_common.dart';
+
+Future<File> _databaseFile() async {
   final dir = await getApplicationSupportDirectory();
   await dir.create(recursive: true);
-  final db = sqlite3.open(p.join(dir.path, 'bociva.db'));
-  db.execute("PRAGMA hexkey = '${await key()}'");
+  return File(p.join(dir.path, 'bociva.db'));
+}
+
+Future<LocalStore> openLocalStore({
+  required Future<String?> Function() readKey,
+  required Future<String> Function() createKey,
+}) async {
+  return openLocalStoreAt(
+    (await _databaseFile()).path,
+    readKey: readKey,
+    createKey: createKey,
+  );
+}
+
+Future<LocalStore> openLocalStoreAt(
+  String path, {
+  required Future<String?> Function() readKey,
+  required Future<String> Function() createKey,
+}) async {
+  final file = File(path);
+  final exists = file.existsSync();
+  var key = await readKey();
+  if (key == null) {
+    // Ohne Schlüssel ist eine vorhandene Datenbank nicht mehr lesbar. Ein
+    // neuer Schlüssel würde das nur verdecken.
+    if (exists) throw const LocalStoreLocked();
+    key = await createKey();
+  }
+  final db = sqlite3.open(file.path);
+  try {
+    db.execute("PRAGMA hexkey = '$key'");
+    db.select('SELECT count(*) FROM sqlite_master');
+  } on SqliteException {
+    db.close();
+    throw const LocalStoreLocked();
+  }
   return SqliteStore(db);
+}
+
+/// Entfernt die Datenbank samt Journal. Nur nach ausdrücklicher Bestätigung.
+Future<void> deleteLocalStore() async {
+  final file = await _databaseFile();
+  for (final suffix in ['', '-wal', '-shm', '-journal']) {
+    final f = File('${file.path}$suffix');
+    if (f.existsSync()) await f.delete();
+  }
 }
 
 /// Datenablage auf dem Gerät.
@@ -115,6 +161,11 @@ class SqliteStore implements LocalStore {
   @override
   Future<void> markAllDirty() async =>
       db.execute('UPDATE records SET dirty = 1');
+
+  @override
+  Future<int> countDirty() async =>
+      db.select('SELECT count(*) c FROM records WHERE dirty = 1').first['c']
+          as int;
 
   @override
   Future<void> clearAll() async {

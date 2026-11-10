@@ -53,7 +53,9 @@ HTTPS. `./keys` gesondert sichern: Ohne den Schlüssel ist `./data` unlesbar.
 | `BOCIVA_DATA_DIR`, `BOCIVA_KEY_FILE` | Datenordner, Schlüsseldatei |
 | `BOCIVA_HOST`, `BOCIVA_PORT` | Adresse und Port (Standard 8770) |
 | `BOCIVA_WEB_DIR` | Ordner der Weboberfläche |
-| `BOCIVA_TRUST_PROXY` | `true` hinter einem Reverse Proxy |
+| `BOCIVA_TRUST_PROXY` | `true` hinter einem Reverse Proxy (in `docker-compose.yml` gesetzt) |
+| `BOCIVA_USER_QUOTA_MB` | Speicher pro Konto in MB (Standard 200) |
+| `BOCIVA_AI_DAILY_LIMIT` | KI-Anfragen pro Tag für alle Konten zusammen (Standard 500) |
 | `BOCIVA_AI_BASE_URL`, `BOCIVA_AI_MODEL`, `BOCIVA_AI_API_KEY` | KI-Dienst |
 | `BOCIVA_FOOD_CONTACT` | Kontakt in der Kennung gegenüber Open Food Facts |
 

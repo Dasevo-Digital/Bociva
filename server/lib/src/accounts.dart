@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:isolate';
 import 'dart:math';
 import 'dart:typed_data';
@@ -8,6 +9,7 @@ import 'package:sqlite3/sqlite3.dart';
 
 import 'api_error.dart';
 import 'database.dart';
+import 'limits.dart';
 
 class User {
   const User(this.id, this.username, this.isAdmin);
@@ -44,6 +46,13 @@ class Accounts {
 
   final Database db;
   final int iterations;
+
+  /// Jeder Passwort-Hash belegt einen Kern für einige hundert Millisekunden.
+  /// Ohne Grenze legten viele gleichzeitige Anmeldungen den Server lahm.
+  final _hashing = Gate(Platform.numberOfProcessors.clamp(1, 4), maxQueue: 32);
+
+  static const maxUsernameLength = 40;
+  static const maxPasswordLength = 256;
 
   static const sessionDays = 90;
   static const inviteDays = 7;
@@ -88,7 +97,7 @@ class Accounts {
   static final _nameRe = RegExp(r'^[\p{L}\p{N}._-]{2,40}$', unicode: true);
 
   void _checkPassword(String password) {
-    if (password.length < 10 || password.length > 256) {
+    if (password.length < 10 || password.length > maxPasswordLength) {
       throw const ApiError(
         400,
         'weak-password',
@@ -167,6 +176,10 @@ class Accounts {
   }
 
   Future<(User, String)?> login(String username, String password) async {
+    if (username.length > maxUsernameLength ||
+        password.length > maxPasswordLength) {
+      return null;
+    }
     final rows = db.select(
       'SELECT id, username, password_hash, is_admin FROM users '
       'WHERE username = ?',
@@ -220,9 +233,37 @@ class Accounts {
     return verifyPassword(password, rows.first['password_hash'] as String);
   }
 
-  /// Löscht das Konto samt aller Datensätze und Sitzungen.
-  void deleteUser(String userId) =>
+  /// Löscht das Konto samt aller Datensätze und Sitzungen. Ohne Administrator
+  /// könnte niemand mehr einladen: Dann wird das älteste übrige Konto einer.
+  /// Ist kein Konto mehr da, gibt es einen neuen Einrichtungscode.
+  ({String? promoted, String? setupCode}) deleteUser(String userId) {
+    String? promoted;
+    db.execute('BEGIN IMMEDIATE');
+    try {
       db.execute('DELETE FROM users WHERE id = ?', [userId]);
+      final admins = db.select(
+        'SELECT 1 FROM users WHERE is_admin = 1 LIMIT 1',
+      );
+      if (admins.isEmpty) {
+        final next = db.select(
+          'SELECT id, username FROM users ORDER BY created_at, id LIMIT 1',
+        );
+        if (next.isNotEmpty) {
+          db.execute('UPDATE users SET is_admin = 1 WHERE id = ?', [
+            next.first['id'],
+          ]);
+          promoted = next.first['username'] as String;
+        }
+      }
+      db.execute('COMMIT');
+    } on Object {
+      db.execute('ROLLBACK');
+      rethrow;
+    }
+    // Gelöschte Daten nicht in freien Seiten der Datei liegen lassen.
+    db.execute('PRAGMA wal_checkpoint(TRUNCATE)');
+    return (promoted: promoted, setupCode: ensureSetupCode());
+  }
 
   void purgeExpired() {
     db.execute('DELETE FROM sessions WHERE expires_at <= ?', [_now]);
@@ -235,8 +276,8 @@ class Accounts {
       List.generate(16, (_) => random.nextInt(256)),
     );
     final rounds = iterations;
-    final key = await Isolate.run(
-      () => _pbkdf2(utf8.encode(password), salt, rounds),
+    final key = await _hashing.run(
+      () => Isolate.run(() => _pbkdf2(utf8.encode(password), salt, rounds)),
     );
     return 'pbkdf2_sha256\$$rounds\$${base64.encode(salt)}\$${base64.encode(key)}';
   }
@@ -246,8 +287,8 @@ class Accounts {
     if (parts.length != 4 || parts[0] != 'pbkdf2_sha256') return false;
     final rounds = int.parse(parts[1]);
     final salt = base64.decode(parts[2]);
-    final actual = await Isolate.run(
-      () => _pbkdf2(utf8.encode(password), salt, rounds),
+    final actual = await _hashing.run(
+      () => Isolate.run(() => _pbkdf2(utf8.encode(password), salt, rounds)),
     );
     return constantTimeEquals(actual, base64.decode(parts[3]));
   }

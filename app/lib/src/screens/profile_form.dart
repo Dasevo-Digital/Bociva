@@ -30,13 +30,13 @@ class _ProfileFormState extends State<ProfileForm> {
   late bool _addActivity = _p?.addActivityToBudget ?? false;
   late final _birth = TextEditingController(text: _p?.birthYear.toString());
   late final _height = TextEditingController(
-    text: _p == null ? '' : fmtOne(_p.heightCm),
+    text: _p == null ? '' : fmtInput(_p.heightCm),
   );
   late final _weight = TextEditingController(
-    text: _p == null ? '' : fmtOne(_p.weightKg),
+    text: _p == null ? '' : fmtInput(_p.weightKg),
   );
   late final _kcal = TextEditingController(
-    text: _p?.kcalOverride == null ? '' : fmtOne(_p!.kcalOverride!),
+    text: _p?.kcalOverride == null ? '' : fmtInput(_p!.kcalOverride!),
   );
   late final _water = TextEditingController(
     text: _p?.waterOverrideMl?.toString() ?? '',
@@ -73,12 +73,15 @@ class _ProfileFormState extends State<ProfileForm> {
       activity: _activity,
       goal: _goal,
       weeklyRateKg: _rate,
+      // Felder, die dieses Formular nicht zeigt, bleiben erhalten.
+      targetWeightKg: _p?.targetWeightKg,
       kcalOverride: parseNumber(_kcal.text),
       waterOverrideMl: parseNumber(_water.text)?.round(),
       proteinPct: _p?.proteinPct ?? 20,
       carbsPct: _p?.carbsPct ?? 50,
       fatPct: _p?.fatPct ?? 30,
       addActivityToBudget: _addActivity,
+      fastingEnabled: _p?.fastingEnabled ?? false,
     );
   }
 
@@ -87,7 +90,9 @@ class _ProfileFormState extends State<ProfileForm> {
     final app = context.app;
     final isFirst = app.profile == null;
     final profile = _draft!;
-    if (isFirst) {
+    // Das Gewicht im Profil folgt dem jüngsten Gewichtseintrag; eine
+    // Änderung hier wird darum ein Eintrag für heute.
+    if (isFirst || (profile.weightKg - _p!.weightKg).abs() >= 0.05) {
       await app.repo.saveWeight(
         WeightEntry(date: dateKey(DateTime.now()), kg: profile.weightKg),
       );

@@ -85,18 +85,25 @@ class ApiClient implements SyncTransport, FoodLookup, AiBackend {
         'Der Server ist nicht erreichbar.',
       );
     }
-    Map<String, Object?> json = const {};
+    Map<String, Object?>? json;
     try {
       final decoded = jsonDecode(utf8.decode(res.bodyBytes));
       if (decoded is Map) json = decoded.cast<String, Object?>();
     } on FormatException {
-      // Ein Proxy davor antwortet womöglich mit HTML.
+      // Ein Proxy oder eine Anmeldeseite davor antwortet womöglich mit HTML.
     }
     if (res.statusCode >= 400) {
       throw ApiException(
         res.statusCode,
-        '${json['error'] ?? 'error'}',
-        '${json['message'] ?? 'Der Server meldet Fehler ${res.statusCode}.'}',
+        '${json?['error'] ?? 'error'}',
+        '${json?['message'] ?? 'Der Server meldet Fehler ${res.statusCode}.'}',
+      );
+    }
+    if (json == null || res.statusCode >= 300) {
+      throw ApiException(
+        res.statusCode,
+        'bad-response',
+        'Der Server hat unerwartet geantwortet. Stimmt die Adresse?',
       );
     }
     return json;
@@ -163,18 +170,22 @@ class ApiClient implements SyncTransport, FoodLookup, AiBackend {
   Future<Map<String, Object?>> export() => _send('GET', 'api/export');
 
   @override
-  Future<SyncResponse> exchange(int since, List<SyncRecord> changes) async =>
-      SyncResponse.fromJson(
-        await _send(
-          'POST',
-          'api/sync',
-          body: {
-            'since': since,
-            'changes': [for (final c in changes) c.toJson()],
-          },
-          timeout: const Duration(seconds: 60),
-        ),
-      );
+  Future<SyncResponse> exchange(int since, List<SyncRecord> changes) async {
+    final j = await _send(
+      'POST',
+      'api/sync',
+      body: {
+        'since': since,
+        'changes': [for (final c in changes) c.toJson()],
+      },
+      timeout: const Duration(seconds: 60),
+    );
+    try {
+      return SyncResponse.fromJson(j);
+    } on FormatException catch (e) {
+      throw ApiException(200, 'bad-response', e.message);
+    }
+  }
 
   @override
   Future<Food?> byBarcode(String barcode) async {

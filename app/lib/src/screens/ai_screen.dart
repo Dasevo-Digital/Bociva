@@ -16,7 +16,8 @@ class AiScreen extends StatefulWidget {
 }
 
 class _Draft {
-  _Draft(this.item) : amount = TextEditingController(text: fmtOne(item.amount));
+  _Draft(this.item)
+    : amount = TextEditingController(text: fmtInput(item.amount));
   final AiFoodItem item;
   final TextEditingController amount;
   bool selected = true;

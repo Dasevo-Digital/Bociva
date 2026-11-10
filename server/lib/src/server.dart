@@ -15,35 +15,10 @@ import 'accounts.dart';
 import 'api_error.dart';
 import 'config.dart';
 import 'database.dart';
+import 'limits.dart';
 import 'web_app.dart';
 
 const version = '0.1.0';
-
-/// Zählt Versuche pro Schlüssel in einem festen Zeitfenster.
-class RateLimiter {
-  RateLimiter(this.limit, this.window);
-
-  final int limit;
-  final Duration window;
-  final _hits = <String, (int, DateTime)>{};
-
-  bool hit(String key) {
-    final now = DateTime.now();
-    if (_hits.length > 10000) {
-      _hits.removeWhere((_, v) => now.isAfter(v.$2));
-    }
-    final current = _hits[key];
-    if (current == null || now.isAfter(current.$2)) {
-      _hits[key] = (1, now.add(window));
-      return true;
-    }
-    if (current.$1 >= limit) return false;
-    _hits[key] = (current.$1 + 1, current.$2);
-    return true;
-  }
-
-  void reset(String key) => _hits.remove(key);
-}
 
 class BocivaServer {
   BocivaServer._(this._http, this._db, this.setupCode, this._purge);
@@ -57,6 +32,9 @@ class BocivaServer {
   final String? setupCode;
 
   int get port => _http.port;
+
+  /// Für Tests.
+  Database get database => _db;
 
   static Future<BocivaServer> start(
     ServerConfig config, {
@@ -83,7 +61,10 @@ class BocivaServer {
       config: config,
       db: db,
       accounts: accounts,
-      records: RecordService(db),
+      records: RecordService(
+        db,
+        maxBytesPerUser: config.userQuotaMb * 1024 * 1024,
+      ),
       food:
           foodLookup ??
           OpenFoodFactsClient(
@@ -99,10 +80,17 @@ class BocivaServer {
       web: WebApp.locate(config.webDir),
     );
     final server = await io.serve(api.handler, config.host, config.port);
-    final purge = Timer.periodic(
-      const Duration(hours: 6),
-      (_) => accounts.purgeExpired(),
-    );
+    final purge = Timer.periodic(const Duration(hours: 6), (_) {
+      try {
+        accounts.purgeExpired();
+        db.execute('DELETE FROM food_cache WHERE fetched_at < ?', [
+          DateTime.now().millisecondsSinceEpoch - _Api.foodCacheMs,
+        ]);
+      } on Object catch (e) {
+        // Etwa bei vollem Datenträger: melden, aber weiterlaufen.
+        stderr.writeln('Aufräumen fehlgeschlagen: $e');
+      }
+    });
     return BocivaServer._(server, db, setupCode, purge);
   }
 
@@ -133,16 +121,28 @@ class _Api {
   final WebApp? web;
 
   final _loginLimit = RateLimiter(10, const Duration(minutes: 15));
+
+  /// Wechselnde Namen von derselben Adresse hebeln das obere Limit sonst aus.
+  final _loginIpLimit = RateLimiter(50, const Duration(minutes: 15));
   final _registerLimit = RateLimiter(10, const Duration(hours: 1));
+  final _deleteLimit = RateLimiter(5, const Duration(minutes: 15));
+  final _syncLimit = RateLimiter(120, const Duration(minutes: 1));
   final _aiLimit = RateLimiter(30, const Duration(minutes: 10));
+  late final _aiBudget = RateLimiter(
+    config.aiDailyLimit,
+    const Duration(days: 1),
+  );
+  final _aiGate = Gate(4, maxQueue: 16);
   final _foodLimit = RateLimiter(60, const Duration(minutes: 1));
+  bool _warnedProxy = false;
 
   /// Open Food Facts erlaubt nur wenige Suchanfragen pro Minute und Quelle.
   final _foodSearchLimit = RateLimiter(10, const Duration(minutes: 1));
 
   static const _maxJsonBytes = 8 * 1024 * 1024;
+  static const _maxAuthBytes = 16 * 1024;
   static const _maxImageBytes = 6 * 1024 * 1024;
-  static const _foodCacheMs = 30 * 86400000;
+  static const foodCacheMs = 30 * 86400000;
   static const _foodMissCacheMs = 86400000;
 
   Handler get handler => const Pipeline()
@@ -190,6 +190,20 @@ class _Api {
           return _json({'error': 'ai', 'message': e.message}, status: 502);
         } on FoodLookupException catch (e) {
           return _json({'error': 'food', 'message': e.message}, status: 502);
+        } on QuotaExceeded {
+          return _json({
+            'error': 'quota',
+            'message':
+                'Der Speicherplatz deines Kontos auf dem Server ist voll.',
+          }, status: 413);
+        } on HttpException catch (e) {
+          // Die Gegenseite hat die Verbindung abgebrochen; kein Stacktrace,
+          // sonst ließe sich das Protokoll damit fluten.
+          stderr.writeln('${request.method} ${request.url.path}: ${e.message}');
+          return _json({
+            'error': 'aborted',
+            'message': 'Die Anfrage wurde abgebrochen.',
+          }, status: 400);
         } catch (e, stack) {
           stderr.writeln('${request.method} ${request.url.path}: $e\n$stack');
           return _json({
@@ -224,28 +238,44 @@ class _Api {
   }
 
   String _clientIp(Request request) {
+    final forwarded = request.headers['x-forwarded-for'];
     if (config.trustProxy) {
-      final forwarded = request.headers['x-forwarded-for'];
       if (forwarded != null && forwarded.isNotEmpty) {
         return forwarded.split(',').last.trim();
       }
+    } else if (forwarded != null && !_warnedProxy) {
+      _warnedProxy = true;
+      stderr.writeln(
+        'Hinweis: Anfragen kommen über einen Proxy, BOCIVA_TRUST_PROXY ist '
+        'aber nicht gesetzt. Alle Anmeldesperren gelten dann für die Adresse '
+        'des Proxys, also für alle gemeinsam.',
+      );
     }
     final info =
         request.context['shelf.io.connection_info'] as HttpConnectionInfo?;
     return info?.remoteAddress.address ?? 'unknown';
   }
 
-  Future<Map<String, Object?>> _body(Request request) async {
+  Future<Map<String, Object?>> _body(
+    Request request, {
+    int maxBytes = _maxJsonBytes,
+  }) async {
+    const tooLarge = ApiError(413, 'too-large', 'Die Anfrage ist zu groß.');
+    const tooSlow = ApiError(408, 'timeout', 'Die Anfrage kam zu langsam an.');
     final declared = request.contentLength;
-    if (declared != null && declared > _maxJsonBytes) {
-      throw const ApiError(413, 'too-large', 'Die Anfrage ist zu groß.');
-    }
+    if (declared != null && declared > maxBytes) throw tooLarge;
     final bytes = BytesBuilder(copy: false);
-    await for (final chunk in request.read()) {
-      bytes.add(chunk);
-      if (bytes.length > _maxJsonBytes) {
-        throw const ApiError(413, 'too-large', 'Die Anfrage ist zu groß.');
+    final deadline = DateTime.now().add(config.bodyTotalTimeout);
+    try {
+      await for (final chunk in request.read().timeout(
+        config.bodyIdleTimeout,
+      )) {
+        bytes.add(chunk);
+        if (bytes.length > maxBytes) throw tooLarge;
+        if (DateTime.now().isAfter(deadline)) throw tooSlow;
       }
+    } on TimeoutException {
+      throw tooSlow;
     }
     try {
       final decoded = jsonDecode(utf8.decode(bytes.takeBytes()));
@@ -300,7 +330,7 @@ class _Api {
         'Zu viele Versuche. Bitte später erneut versuchen.',
       );
     }
-    final body = await _body(request);
+    final body = await _body(request, maxBytes: _maxAuthBytes);
     final (user, token) = await accounts.register(
       _string(body, 'username').trim(),
       _string(body, 'password'),
@@ -310,18 +340,22 @@ class _Api {
   }
 
   Future<Response> _login(Request request) async {
-    final body = await _body(request);
+    final body = await _body(request, maxBytes: _maxAuthBytes);
     final username = _string(body, 'username').trim();
     final password = _string(body, 'password');
-    if (password.length > 256) {
+    // Zu lange Namen gibt es nicht; sie kämen sonst auch als Schlüssel in die
+    // Anmeldesperre.
+    if (username.length > Accounts.maxUsernameLength ||
+        password.length > Accounts.maxPasswordLength) {
       throw const ApiError(
         401,
         'bad-login',
         'Name oder Passwort stimmt nicht.',
       );
     }
-    final key = '${_clientIp(request)}|${username.toLowerCase()}';
-    if (!_loginLimit.hit(key)) {
+    final ip = _clientIp(request);
+    final key = '$ip|${username.toLowerCase()}';
+    if (!_loginIpLimit.hit(ip) || !_loginLimit.hit(key)) {
       throw const ApiError(
         429,
         'rate-limit',
@@ -346,15 +380,34 @@ class _Api {
   }
 
   Future<Response> _deleteAccount(Request request, User user) async {
-    final body = await _body(request);
-    if (!await accounts.checkPassword(user.id, _string(body, 'password'))) {
+    if (!_deleteLimit.hit(user.id)) {
+      throw const ApiError(
+        429,
+        'rate-limit',
+        'Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.',
+      );
+    }
+    final body = await _body(request, maxBytes: _maxAuthBytes);
+    final password = _string(body, 'password');
+    if (password.length > Accounts.maxPasswordLength ||
+        !await accounts.checkPassword(user.id, password)) {
       throw const ApiError(403, 'bad-login', 'Das Passwort stimmt nicht.');
     }
-    accounts.deleteUser(user.id);
+    final result = accounts.deleteUser(user.id);
+    if (result.promoted case final name?) {
+      stdout.writeln('Konto „$name“ ist jetzt Administrator.');
+    }
+    if (result.setupCode case final code?) {
+      stdout.writeln(
+        'Kein Konto mehr vorhanden. Einrichtungscode für das erste Konto: '
+        '$code',
+      );
+    }
     return _json({'ok': true});
   }
 
   Future<Response> _sync(Request request, User user) async {
+    if (!_syncLimit.hit(user.id)) throw _tooFast;
     final body = await _body(request);
     final since = body['since'];
     final raw = body['changes'];
@@ -364,38 +417,46 @@ class _Api {
     if (raw.length > RecordService.maxChanges) {
       throw const ApiError(413, 'too-large', 'Zu viele Änderungen auf einmal.');
     }
+    // Ungültige Datensätze werden einzeln abgewiesen. Lehnte der Server den
+    // ganzen Stapel ab, schickte das Gerät ihn immer wieder.
     final changes = <SyncRecord>[];
+    var rejected = 0;
     for (final item in raw) {
-      changes.add(_validRecord(item));
+      final record = _validRecord(item);
+      record == null ? rejected++ : changes.add(record);
     }
     return _json(
       records
-          .sync(user.id, since, changes, DateTime.now().millisecondsSinceEpoch)
+          .sync(
+            user.id,
+            since,
+            changes,
+            DateTime.now().millisecondsSinceEpoch,
+            rejected: rejected,
+          )
           .toJson(),
     );
   }
 
-  SyncRecord _validRecord(Object? item) {
-    const bad = ApiError(400, 'bad-record', 'Ungültiger Datensatz.');
-    if (item is! Map) throw bad;
+  SyncRecord? _validRecord(Object? item) {
+    if (item is! Map) return null;
     final SyncRecord record;
     try {
       record = SyncRecord.fromJson(item.cast<String, Object?>());
     } on TypeError {
-      throw bad;
+      return null;
     }
-    if (!RecordKind.all.contains(record.kind) ||
-        record.id.isEmpty ||
-        record.id.length > 80 ||
-        record.updatedAt < 0 ||
-        jsonEncode(record.data).length > RecordService.maxRecordBytes) {
-      throw bad;
-    }
-    return record;
+    return recordProblem(record) == null ? record : null;
   }
 
-  Future<Response> _export(Request request, User user) async =>
-      _json(records.export(user.id));
+  Future<Response> _export(Request request, User user) async => Response(
+    200,
+    body: records.export(user.id),
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+    },
+  );
 
   Future<Response> _foodByBarcode(Request request, String code) async {
     final user = _requireUser(request);
@@ -410,7 +471,7 @@ class _Api {
     if (cached.isNotEmpty) {
       final json = cached.first['json'] as String?;
       final age = now - (cached.first['fetched_at'] as int);
-      if (age < (json == null ? _foodMissCacheMs : _foodCacheMs)) {
+      if (age < (json == null ? _foodMissCacheMs : foodCacheMs)) {
         if (json == null) throw _foodNotFound;
         return _json({'food': jsonDecode(json)});
       }
@@ -460,6 +521,14 @@ class _Api {
       );
     }
     if (!_aiLimit.hit(user.id)) throw _tooFast;
+    if (!_aiBudget.hit('all')) {
+      throw const ApiError(
+        429,
+        'ai-budget',
+        'Das tägliche Kontingent für KI-Anfragen auf diesem Server ist '
+            'aufgebraucht. Morgen geht es weiter.',
+      );
+    }
     return backend;
   }
 
@@ -481,23 +550,25 @@ class _Api {
       }
     }
     const allowedMime = {'image/jpeg', 'image/png', 'image/webp'};
-    final result = await backend.analyzeMeal(
-      text: text is String && text.length <= 2000 ? text : null,
-      image: image,
-      imageMime: allowedMime.contains(mime) ? mime as String : 'image/jpeg',
+    final result = await _aiGate.run(
+      () => backend.analyzeMeal(
+        text: text is String && text.length <= 2000 ? text : null,
+        image: image,
+        imageMime: allowedMime.contains(mime) ? mime as String : 'image/jpeg',
+      ),
     );
     return _json(result.toJson());
   }
 
   Future<Response> _aiReview(Request request, User user) async {
     final backend = _requireAi(user);
-    final body = await _body(request);
-    final stats = body['stats'];
-    if (stats is! Map || jsonEncode(stats).length > 32 * 1024) {
+    final body = await _body(request, maxBytes: 64 * 1024);
+    final stats = reviewStats(body['stats']);
+    if (stats == null) {
       throw const ApiError(400, 'bad-request', 'Ungültige Anfrage.');
     }
     return _json({
-      'text': await backend.reviewNutrition(stats.cast<String, Object?>()),
+      'text': await _aiGate.run(() => backend.reviewNutrition(stats)),
     });
   }
 
@@ -507,4 +578,33 @@ class _Api {
     }
     return _json({'code': accounts.createInvite()});
   }
+}
+
+/// Nur Zahlen in der Form, die die App schickt. Freier Text ginge sonst als
+/// beliebige Aufgabe an das Modell, auf Kosten des Servers.
+Map<String, Object?>? reviewStats(Object? raw) {
+  const goalKeys = {'zielKcal', 'zielEiweissG', 'zielWasserMl'};
+  const dayKeys = {
+    'kcal',
+    'eiweissG',
+    'kohlenhydrateG',
+    'fettG',
+    'wasserMl',
+    'verbranntKcal',
+  };
+  bool isNumber(Object? v) => v is num && v.isFinite && v.abs() < 1e6;
+  if (raw is! Map) return null;
+  final days = raw['tage'];
+  if (days is! List || days.isEmpty || days.length > 31) return null;
+  for (final entry in raw.entries) {
+    if (entry.key == 'tage') continue;
+    if (!goalKeys.contains(entry.key) || !isNumber(entry.value)) return null;
+  }
+  for (final day in days) {
+    if (day is! Map || day.isEmpty) return null;
+    for (final entry in day.entries) {
+      if (!dayKeys.contains(entry.key) || !isNumber(entry.value)) return null;
+    }
+  }
+  return raw.cast<String, Object?>();
 }

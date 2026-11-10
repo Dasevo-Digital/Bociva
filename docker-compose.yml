@@ -23,9 +23,17 @@ services:
       # Getrennt von ./data: Eine Datensicherung ohne Schlüssel ist wertlos.
       # Den Schlüssel gesondert sichern!
       - ./keys:/keys
+    # Obergrenzen, damit ein Konto nicht den ganzen Rechner belegen kann.
+    mem_limit: 1g
+    pids_limit: 256
     environment:
-      # Hinter einem Reverse Proxy, damit die Anmeldesperre die echte IP sieht:
-      # BOCIVA_TRUST_PROXY: "true"
+      # Der Port ist nur lokal erreichbar, also kommt jede Anfrage über den
+      # Reverse Proxy davor. Damit sehen die Anmeldesperren die echte IP statt
+      # der des Proxys. Ohne Proxy davor auf "false" setzen.
+      BOCIVA_TRUST_PROXY: "true"
+      # Speicher pro Konto in MB und KI-Anfragen pro Tag für alle zusammen:
+      # BOCIVA_USER_QUOTA_MB: "200"
+      # BOCIVA_AI_DAILY_LIMIT: "500"
       # KI-Analyse: Jeder Dienst mit Chat-Completions-Schnittstelle, selbst
       # gehostet oder als API. Für Fotos braucht das Modell Bildverständnis.
       # BOCIVA_AI_BASE_URL: "http://host.docker.internal:11434/v1"

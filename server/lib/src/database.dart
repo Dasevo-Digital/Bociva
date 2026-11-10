@@ -62,8 +62,8 @@ String loadOrCreateKey(String path, File database) {
 }
 
 Database openDatabase(String path, {String? hexKey}) {
-  if (path == ':memory:') return sqlite3.openInMemory();
-  final db = sqlite3.open(path);
+  final memory = path == ':memory:';
+  final db = memory ? sqlite3.openInMemory() : sqlite3.open(path);
   if (hexKey != null) {
     try {
       db.execute("PRAGMA hexkey = '$hexKey'");
@@ -75,18 +75,19 @@ Database openDatabase(String path, {String? hexKey}) {
       );
     }
   }
-  db.execute('PRAGMA journal_mode = WAL');
+  if (!memory) db.execute('PRAGMA journal_mode = WAL');
   db.execute('PRAGMA foreign_keys = ON');
   db.execute('PRAGMA busy_timeout = 5000');
+  // Gelöschtes wird überschrieben und bleibt nicht in freien Seiten stehen.
+  db.execute('PRAGMA secure_delete = ON');
   return db;
 }
 
-const _schemaVersion = 1;
-
-void migrate(Database db) {
-  final version = db.select('PRAGMA user_version').first.values.first as int;
-  if (version >= _schemaVersion) return;
-  db.execute('''
+/// Jede Stufe läuft in einer eigenen Transaktion: Ein Abbruch mittendrin
+/// hinterlässt keine halb angelegte Datenbank.
+const _migrations = <String>[
+  // 1: Grundschema
+  '''
     CREATE TABLE users (
       id TEXT PRIMARY KEY,
       username TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -121,19 +122,57 @@ void migrate(Database db) {
       json TEXT,
       fetched_at INTEGER NOT NULL
     );
-    PRAGMA user_version = $_schemaVersion;
-  ''');
+  ''',
+  // 2: Speicherverbrauch pro Konto, für die Quote
+  '''
+    ALTER TABLE users ADD COLUMN record_count INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE users ADD COLUMN data_bytes INTEGER NOT NULL DEFAULT 0;
+    UPDATE users SET
+      record_count = (SELECT count(*) FROM records r WHERE r.user_id = users.id),
+      data_bytes = (SELECT coalesce(sum(length(data)), 0) FROM records r
+                    WHERE r.user_id = users.id);
+    CREATE INDEX food_cache_fetched ON food_cache (fetched_at);
+  ''',
+];
+
+void migrate(Database db) {
+  var version = db.select('PRAGMA user_version').first.values.first as int;
+  while (version < _migrations.length) {
+    db.execute('BEGIN IMMEDIATE');
+    try {
+      db.execute(_migrations[version]);
+      version++;
+      db.execute('PRAGMA user_version = $version');
+      db.execute('COMMIT');
+    } on Object {
+      db.execute('ROLLBACK');
+      rethrow;
+    }
+  }
+}
+
+/// Das Konto hat seinen Speicherplatz ausgeschöpft.
+class QuotaExceeded implements Exception {
+  const QuotaExceeded();
 }
 
 /// Serverseitiger Abgleich. Der Server kennt nur die Hülle der Datensätze.
 class RecordService {
-  RecordService(this.db);
+  RecordService(
+    this.db, {
+    this.maxRecordsPerUser = 500000,
+    this.maxBytesPerUser = 200 * 1024 * 1024,
+  });
 
   final Database db;
+  final int maxRecordsPerUser, maxBytesPerUser;
 
   static const pageSize = 1000;
+
+  /// Auch große Datensätze sollen eine Antwort nicht unbegrenzt aufblähen.
+  static const maxPageBytes = 4 * 1024 * 1024;
   static const maxChanges = 2000;
-  static const maxRecordBytes = 64 * 1024;
+  static const maxRecordBytes = SyncLimits.maxRecordBytes;
 
   /// Eine falsch gehende Uhr soll nicht auf Dauer jede Änderung schlagen.
   static const maxClockSkewMs = 5 * 60 * 1000;
@@ -142,15 +181,25 @@ class RecordService {
     String userId,
     int since,
     List<SyncRecord> changes,
-    int nowMs,
-  ) {
+    int nowMs, {
+    int rejected = 0,
+  }) {
     db.execute('BEGIN IMMEDIATE');
     try {
-      var seq =
-          db.select('SELECT seq FROM users WHERE id = ?', [userId]).first['seq']
-              as int;
+      final user = db.select(
+        'SELECT seq, record_count, data_bytes FROM users WHERE id = ?',
+        [userId],
+      ).first;
+      var seq = user['seq'] as int;
+      var count = user['record_count'] as int;
+      var bytes = user['data_bytes'] as int;
+      // Ein Cursor jenseits des Servers stammt von vor einer Wiederherstellung
+      // aus einer Sicherung. Ohne Neubeginn fehlten dem Gerät still alle neuen
+      // Datensätze, bis die Zählung es wieder eingeholt hat.
+      if (since > seq) since = 0;
       final getStamp = db.prepare(
-        'SELECT updated_at FROM records WHERE user_id = ? AND kind = ? AND id = ?',
+        'SELECT updated_at, length(data) AS size FROM records '
+        'WHERE user_id = ? AND kind = ? AND id = ?',
       );
       final upsert = db.prepare('''
         INSERT INTO records (user_id, kind, id, seq, updated_at, deleted, data)
@@ -167,6 +216,14 @@ class RecordService {
               (existing.first['updated_at'] as int) >= stamp) {
             continue;
           }
+          final data = c.deleted ? '{}' : jsonEncode(c.data);
+          if (existing.isEmpty) count++;
+          bytes += data.length - (existing.firstOrNull?['size'] as int? ?? 0);
+          // Löschen geht immer, auch bei voller Quote.
+          if (!c.deleted &&
+              (count > maxRecordsPerUser || bytes > maxBytesPerUser)) {
+            throw const QuotaExceeded();
+          }
           seq++;
           upsert.execute([
             userId,
@@ -175,34 +232,47 @@ class RecordService {
             seq,
             stamp,
             c.deleted ? 1 : 0,
-            c.deleted ? '{}' : jsonEncode(c.data),
+            data,
           ]);
         }
       } finally {
         getStamp.close();
         upsert.close();
       }
-      db.execute('UPDATE users SET seq = ? WHERE id = ?', [seq, userId]);
+      db.execute(
+        'UPDATE users SET seq = ?, record_count = ?, data_bytes = ? '
+        'WHERE id = ?',
+        [seq, count, bytes, userId],
+      );
       final rows = db.select(
         'SELECT kind, id, seq, updated_at, deleted, data FROM records '
         'WHERE user_id = ? AND seq > ? ORDER BY seq LIMIT ?',
         [userId, since, pageSize],
       );
       db.execute('COMMIT');
+      final page = <SyncRecord>[];
+      var pageBytes = 0;
+      var cursor = since;
+      for (final r in rows) {
+        final data = r['data'] as String;
+        if (page.isNotEmpty && pageBytes + data.length > maxPageBytes) break;
+        pageBytes += data.length;
+        cursor = r['seq'] as int;
+        page.add(
+          SyncRecord(
+            kind: r['kind'] as String,
+            id: r['id'] as String,
+            updatedAt: r['updated_at'] as int,
+            deleted: r['deleted'] == 1,
+            data: (jsonDecode(data) as Map).cast<String, Object?>(),
+          ),
+        );
+      }
       return SyncResponse(
-        cursor: rows.isEmpty ? max(since, 0) : rows.last['seq'] as int,
-        hasMore: rows.length == pageSize,
-        changes: [
-          for (final r in rows)
-            SyncRecord(
-              kind: r['kind'] as String,
-              id: r['id'] as String,
-              updatedAt: r['updated_at'] as int,
-              deleted: r['deleted'] == 1,
-              data: (jsonDecode(r['data'] as String) as Map)
-                  .cast<String, Object?>(),
-            ),
-        ],
+        cursor: cursor,
+        hasMore: page.length < rows.length || rows.length == pageSize,
+        changes: page,
+        rejected: rejected,
       );
     } on Object {
       db.execute('ROLLBACK');
@@ -210,15 +280,36 @@ class RecordService {
     }
   }
 
-  Map<String, Object?> export(String userId) {
-    final out = <String, List<Object?>>{for (final k in RecordKind.all) k: []};
-    for (final r in db.select(
-      'SELECT kind, data FROM records WHERE user_id = ? AND deleted = 0 '
-      'ORDER BY kind, id',
-      [userId],
-    )) {
-      out[r['kind'] as String]?.add(jsonDecode(r['data'] as String));
+  /// Der Export in Häppchen, damit ein großes Konto weder den Speicher füllt
+  /// noch andere Anfragen so lange aufhält.
+  Stream<List<int>> export(String userId) async* {
+    const pageSize = 500;
+    yield utf8.encode('{"format":"bociva-export","version":1');
+    for (final kind in RecordKind.all) {
+      yield utf8.encode(',${jsonEncode(kind)}:[');
+      var after = '';
+      var first = true;
+      while (true) {
+        final rows = db.select(
+          'SELECT id, data FROM records WHERE user_id = ? AND kind = ? '
+          'AND deleted = 0 AND id > ? ORDER BY id LIMIT ?',
+          [userId, kind, after, pageSize],
+        );
+        if (rows.isEmpty) break;
+        final out = StringBuffer();
+        for (final r in rows) {
+          if (!first) out.write(',');
+          first = false;
+          out.write(r['data'] as String);
+        }
+        yield utf8.encode(out.toString());
+        after = rows.last['id'] as String;
+        if (rows.length < pageSize) break;
+        // Anderen Anfragen Zeit lassen.
+        await Future<void>.delayed(Duration.zero);
+      }
+      yield utf8.encode(']');
     }
-    return {'format': 'bociva-export', 'version': 1, ...out};
+    yield utf8.encode('}');
   }
 }

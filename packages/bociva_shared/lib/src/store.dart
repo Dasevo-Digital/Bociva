@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 /// Ein synchronisierbarer Datensatz. Lebensmittel, Tagebuch, Wasser usw. sind
 /// alle von dieser Form; der Server versteht nur diese Hülle.
 class SyncRecord {
@@ -55,6 +57,41 @@ abstract final class RecordKind {
   };
 }
 
+/// Grenzen, die Server und Geräte gleich prüfen.
+abstract final class SyncLimits {
+  static const maxIdLength = 80;
+  static const maxRecordBytes = 64 * 1024;
+}
+
+/// Warum ein Datensatz nicht übertragen werden kann, oder `null`.
+String? recordProblem(SyncRecord r) {
+  if (!RecordKind.all.contains(r.kind)) return 'unbekannte Art';
+  if (r.id.isEmpty || r.id.length > SyncLimits.maxIdLength) {
+    return 'ungültige Kennung';
+  }
+  if (r.updatedAt < 0) return 'ungültiger Zeitstempel';
+  final String encoded;
+  try {
+    encoded = jsonEncode(r.data);
+  } on Object {
+    // Zum Beispiel NaN oder Infinity.
+    return 'ungültige Zahl';
+  }
+  if (encoded.length > SyncLimits.maxRecordBytes) return 'zu groß';
+  return null;
+}
+
+/// Ein Datensatz, den weder Gerät noch Server speichern würden.
+class InvalidRecordException implements Exception {
+  const InvalidRecordException(this.reason);
+  final String reason;
+
+  @override
+  String toString() => reason == 'zu groß'
+      ? 'Der Eintrag ist zu groß. Bitte kürzen.'
+      : 'Der Eintrag enthält ungültige Werte.';
+}
+
 /// Datenablage eines Geräts. Native Apps speichern in SQLite, im Browser
 /// bleiben die Daten nur im Speicher und liegen auf dem Server.
 abstract class LocalStore {
@@ -75,6 +112,9 @@ abstract class LocalStore {
   Future<void> clearDirty(List<SyncRecord> sent);
 
   Future<void> markAllDirty();
+
+  /// Anzahl noch nicht übertragener Datensätze.
+  Future<int> countDirty();
   Future<void> clearAll();
   Future<int> countLive();
   Future<String?> meta(String key);
@@ -136,6 +176,9 @@ class MemoryStore implements LocalStore {
 
   @override
   Future<void> markAllDirty() async => _dirty.addAll(_records.keys);
+
+  @override
+  Future<int> countDirty() async => _dirty.length;
 
   @override
   Future<void> clearAll() async {

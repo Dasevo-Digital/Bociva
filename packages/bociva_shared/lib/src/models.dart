@@ -1,16 +1,17 @@
 import 'dart:math';
 
-double _d(Object? v, [double fallback = 0]) => switch (v) {
-  num n when n.isFinite => n.toDouble(),
-  String s => double.tryParse(s.replaceAll(',', '.')) ?? fallback,
-  _ => fallback,
-};
+double _d(Object? v, [double fallback = 0]) => _dn(v) ?? fallback;
 
-double? _dn(Object? v) => switch (v) {
-  num n when n.isFinite => n.toDouble(),
-  String s => double.tryParse(s.replaceAll(',', '.')),
-  _ => null,
-};
+/// Nur endliche Zahlen: „NaN“ oder „Infinity“ ließen sich nicht als JSON
+/// speichern und blockierten den Abgleich.
+double? _dn(Object? v) {
+  final d = switch (v) {
+    num n => n.toDouble(),
+    String s => double.tryParse(s.replaceAll(',', '.')),
+    _ => null,
+  };
+  return d != null && d.isFinite ? d : null;
+}
 
 int _i(Object? v, [int fallback = 0]) => switch (v) {
   num n when n.isFinite => n.toInt(),
@@ -581,7 +582,7 @@ class FastingSession {
     id: '${j['id']}',
     date: '${j['date']}',
     startAt: _i(j['startAt']),
-    targetHours: _i(j['targetHours'], 16),
+    targetHours: _i(j['targetHours'], 16).clamp(1, 72),
     endAt: j['endAt'] == null ? null : _i(j['endAt']),
   );
 

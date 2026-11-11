@@ -7,6 +7,9 @@ abstract final class BocivaColors {
   static const leaf = Color(0xFF6DB33F);
   static const mint = Color(0xFFB8E3B0);
   static const coral = Color(0xFFF2735A);
+
+  /// Für Flächen mit weißer Schrift (Kontrast 4,7:1 statt 2,9:1).
+  static const coralDeep = Color(0xFFC94A32);
   static const paper = Color(0xFFFBF7F1);
   static const ink = Color(0xFF14211A);
   static const protein = Color(0xFFB4506F);
@@ -79,7 +82,7 @@ ThemeData bocivaTheme(Brightness brightness) {
           : BocivaColors.leaf.withValues(alpha: 0.28),
     ),
     floatingActionButtonTheme: const FloatingActionButtonThemeData(
-      backgroundColor: BocivaColors.coral,
+      backgroundColor: BocivaColors.coralDeep,
       foregroundColor: Colors.white,
     ),
     snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating),

@@ -691,6 +691,84 @@ Klar! ```json
       );
     });
   });
+
+  group('Serie', () {
+    test('zählt bis heute, wenn heute eingetragen ist', () {
+      final s = Streak.fromDates({
+        '2026-03-27',
+        '2026-03-28',
+        '2026-03-29',
+        '2026-03-30',
+      }, '2026-03-30');
+      expect(s.current, 4);
+      expect(s.todayDone, isTrue);
+      expect(s.atRisk, isFalse);
+    });
+
+    test('hält bis Mitternacht, wenn heute noch nichts eingetragen ist', () {
+      final s = Streak.fromDates({'2026-01-30', '2026-01-31'}, '2026-02-01');
+      expect(s.current, 2);
+      expect(s.todayDone, isFalse);
+      expect(s.atRisk, isTrue);
+      expect(s.nextMilestone, 3);
+    });
+
+    test('reißt nach einem leeren Tag', () {
+      final s = Streak.fromDates({'2026-05-01', '2026-05-02'}, '2026-05-04');
+      expect(s.current, 0);
+      expect(s.longest, 2);
+      expect(s.atRisk, isFalse);
+    });
+
+    test('längste Serie und Tage in der Zukunft', () {
+      final s = Streak.fromDates({
+        '2025-12-30',
+        '2025-12-31',
+        '2026-01-01',
+        '2026-01-02',
+        '2026-01-05',
+        '2026-01-06',
+        '2026-01-08',
+      }, '2026-01-06');
+      expect(s.current, 2);
+      expect(s.longest, 4);
+      expect(s.totalDays, 6);
+      expect(s.tracked('2026-01-08'), isFalse);
+      expect(s.lastDays(3), ['2026-01-04', '2026-01-05', '2026-01-06']);
+    });
+
+    test('über die Zeitumstellung hinweg', () {
+      final s = Streak.fromDates({
+        '2026-03-28',
+        '2026-03-29',
+        '2026-03-30',
+      }, '2026-03-30');
+      expect(s.current, 3);
+      expect(s.isMilestone, isTrue);
+    });
+
+    test('nur nicht gelöschte Tagebucheinträge zählen', () async {
+      final repo = BocivaRepository(MemoryStore());
+      final food = basicFoods.first;
+      final first = await repo.logFood(
+        food,
+        date: '2026-04-01',
+        meal: Meal.lunch,
+        amount: 100,
+      );
+      await repo.logFood(
+        food,
+        date: '2026-04-02',
+        meal: Meal.lunch,
+        amount: 100,
+      );
+      await repo.addWater('2026-04-03', 250);
+      expect((await repo.streak('2026-04-03')).current, 2);
+      await repo.deleteDiary(first.id);
+      expect((await repo.streak('2026-04-03')).current, 1);
+      expect((await repo.streak('2026-04-04')).current, 0);
+    });
+  });
 }
 
 class _Fake implements SyncTransport {

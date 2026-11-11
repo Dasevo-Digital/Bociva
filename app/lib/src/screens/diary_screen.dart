@@ -5,7 +5,9 @@ import 'package:intl/intl.dart';
 import '../controller.dart';
 import '../format.dart';
 import '../theme.dart';
+import '../widgets/brand.dart';
 import '../widgets/charts.dart';
+import '../widgets/streak.dart';
 import 'add_food_screen.dart';
 import 'fasting_card.dart';
 import 'food_amount_sheet.dart';
@@ -53,6 +55,7 @@ class DiaryScreen extends StatelessWidget {
           child: Text(_title(app)),
         ),
         actions: [
+          if (app.streak case final streak?) StreakChip(streak: streak),
           IconButton(
             tooltip: 'Vorheriger Tag',
             icon: const Icon(Icons.chevron_left),
@@ -76,6 +79,10 @@ class DiaryScreen extends StatelessWidget {
           children: [
             _SummaryCard(day: day),
             const SizedBox(height: 12),
+            if (app.isToday && app.streak != null) ...[
+              StreakCard(streak: app.streak!),
+              const SizedBox(height: 12),
+            ],
             if ((app.profile?.fastingEnabled ?? false) && app.isToday) ...[
               const FastingCard(),
               const SizedBox(height: 12),
@@ -111,83 +118,96 @@ class _SummaryCard extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [BocivaColors.forest, BocivaColors.forestDeep],
+            colors: [BocivaColors.green, BocivaColors.forestDeep],
           ),
         ),
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                CalorieRing(
-                  fraction: day.budgetKcal <= 0
-                      ? 0
-                      : consumed.kcal / day.budgetKcal,
-                  over: over,
-                  size: 148,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        fmtInt(remaining.abs()),
-                        key: const Key('kcal-remaining'),
-                        style: light.copyWith(
-                          fontSize: 30,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      Text(
-                        over ? 'kcal darüber' : 'kcal übrig',
-                        style: light.copyWith(fontSize: 13),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 20),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _Stat('Gegessen', fmtInt(consumed.kcal)),
-                      const SizedBox(height: 10),
-                      _Stat('Tagesziel', fmtInt(day.budgetKcal)),
-                      const SizedBox(height: 10),
-                      _Stat('Verbrannt', fmtInt(day.burnedKcal)),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 18),
-            Row(
-              children: [
-                _Macro(
-                  'Eiweiß',
-                  consumed.protein,
-                  day.goals.protein,
-                  const Color(0xFFF2A9BF),
-                ),
-                const SizedBox(width: 12),
-                _Macro(
-                  'Kohlenh.',
-                  consumed.carbs,
-                  day.goals.carbs,
-                  const Color(0xFFF4CB72),
-                ),
-                const SizedBox(width: 12),
-                _Macro(
-                  'Fett',
-                  consumed.fat,
-                  day.goals.fat,
-                  const Color(0xFF9BD4E4),
-                ),
-              ],
-            ),
-          ],
+        child: CustomPaint(
+          painter: const LeafDecoration(color: Color(0x14FFFFFF)),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: _summaryContent(consumed, remaining, over, light),
+          ),
         ),
       ),
     );
   }
+
+  Widget _summaryContent(
+    Nutrients consumed,
+    double remaining,
+    bool over,
+    TextStyle light,
+  ) => Column(
+    children: [
+      Row(
+        children: [
+          CalorieRing(
+            fraction: day.budgetKcal <= 0 ? 0 : consumed.kcal / day.budgetKcal,
+            over: over,
+            size: 148,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  fmtInt(remaining.abs()),
+                  key: const Key('kcal-remaining'),
+                  style: light.copyWith(
+                    fontSize: 30,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                Text(
+                  over ? 'kcal darüber' : 'kcal übrig',
+                  style: light.copyWith(fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 20),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _Stat('Gegessen', fmtInt(consumed.kcal)),
+                const SizedBox(height: 10),
+                _Stat('Tagesziel', fmtInt(day.budgetKcal)),
+                const SizedBox(height: 10),
+                _Stat('Verbrannt', fmtInt(day.burnedKcal)),
+              ],
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 18),
+      Row(
+        children: [
+          _Macro(
+            'Eiweiß',
+            Icons.fitness_center_rounded,
+            consumed.protein,
+            day.goals.protein,
+            BocivaColors.proteinOnGreen,
+          ),
+          const SizedBox(width: 12),
+          _Macro(
+            'Kohlenh.',
+            Icons.grass_rounded,
+            consumed.carbs,
+            day.goals.carbs,
+            BocivaColors.carbsOnGreen,
+          ),
+          const SizedBox(width: 12),
+          _Macro(
+            'Fett',
+            Icons.opacity_rounded,
+            consumed.fat,
+            day.goals.fat,
+            BocivaColors.fatOnGreen,
+          ),
+        ],
+      ),
+    ],
+  );
 }
 
 class _Stat extends StatelessWidget {
@@ -212,8 +232,9 @@ class _Stat extends StatelessWidget {
 }
 
 class _Macro extends StatelessWidget {
-  const _Macro(this.label, this.value, this.goal, this.color);
+  const _Macro(this.label, this.icon, this.value, this.goal, this.color);
   final String label;
+  final IconData icon;
   final double value, goal;
   final Color color;
 
@@ -222,9 +243,19 @@ class _Macro extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: const TextStyle(color: Colors.white70, fontSize: 13),
+        Row(
+          children: [
+            Icon(icon, size: 15, color: color),
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Colors.white70, fontSize: 13),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 4),
         ProgressLine(
@@ -252,12 +283,19 @@ class _MealCard extends StatelessWidget {
     final entries = day.entries.where((e) => e.meal == meal).toList();
     final kcal = day.consumedIn(meal).kcal;
     final theme = Theme.of(context);
+    final (icon, color) = switch (meal) {
+      Meal.breakfast => (Icons.free_breakfast_rounded, BocivaColors.wheat),
+      Meal.lunch => (Icons.lunch_dining_rounded, BocivaColors.protein),
+      Meal.dinner => (Icons.dinner_dining_rounded, BocivaColors.coral),
+      Meal.snack => (Icons.cookie_rounded, BocivaColors.apple),
+    };
     return Card(
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 6),
         child: Column(
           children: [
             ListTile(
+              leading: IconBubble(icon: icon, color: color),
               title: Text(
                 meal.label,
                 style: theme.textTheme.titleMedium!.copyWith(
@@ -280,9 +318,11 @@ class _MealCard extends StatelessWidget {
                 ),
               ),
             ),
+            if (entries.isNotEmpty) const Divider(indent: 16, endIndent: 16),
             for (final e in entries)
               ListTile(
                 dense: true,
+                contentPadding: const EdgeInsets.only(left: 72, right: 20),
                 title: Text(
                   e.name,
                   maxLines: 1,
@@ -347,8 +387,11 @@ class _WaterCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Icon(Icons.water_drop, color: BocivaColors.water),
-                const SizedBox(width: 8),
+                const IconBubble(
+                  icon: Icons.water_drop_rounded,
+                  color: BocivaColors.water,
+                ),
+                const SizedBox(width: 16),
                 Text(
                   'Wasser',
                   style: theme.textTheme.titleMedium!.copyWith(
@@ -417,8 +460,11 @@ class _ActivityCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Icon(Icons.directions_run, color: BocivaColors.coral),
-                const SizedBox(width: 8),
+                const IconBubble(
+                  icon: Icons.directions_run_rounded,
+                  color: BocivaColors.coral,
+                ),
+                const SizedBox(width: 16),
                 Text(
                   'Aktivität',
                   style: theme.textTheme.titleMedium!.copyWith(

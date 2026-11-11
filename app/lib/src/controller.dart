@@ -79,6 +79,13 @@ class AppController extends ChangeNotifier {
   DaySummary? day;
   FastingSession? fasting;
 
+  /// Tage in Folge mit eingetragenem Essen.
+  Streak? streak;
+
+  /// Eine gerade verlängerte Serie, die die Oberfläche noch würdigen soll.
+  Streak? _celebration;
+  String? _celebrated;
+
   /// Steigt bei jeder Datenänderung, damit z. B. die Statistik neu lädt.
   int dataVersion = 0;
 
@@ -255,6 +262,7 @@ class AppController extends ChangeNotifier {
     fasting = profile?.fastingEnabled ?? false
         ? await repo.activeFasting()
         : null;
+    streak = await repo.streak(dateKey(DateTime.now()));
     dataVersion++;
     if (notify) notifyListeners();
   }
@@ -282,6 +290,15 @@ class AppController extends ChangeNotifier {
 
   bool get isToday => date == dateKey(DateTime.now());
 
+  /// Holt die zu würdigende Serie ab (nur einmal).
+  Streak? takeCelebration() {
+    final c = _celebration;
+    _celebration = null;
+    return c;
+  }
+
+  bool get hasCelebration => _celebration != null;
+
   // Eingaben
 
   Future<void> saveProfile(Profile p) async {
@@ -291,13 +308,23 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> logFood(Food food, Meal meal, double amount) async {
+    final before = streak?.current ?? 0;
     final entry = await repo.logFood(
       food,
       date: date,
       meal: meal,
       amount: amount,
     );
-    await reload();
+    await reload(notify: false);
+    final now = streak!;
+    // Einmal pro Länge und Tag, auch wenn ein Eintrag gelöscht und neu
+    // angelegt wird.
+    final mark = '${now.today}:${now.current}';
+    if (now.current > before && _celebrated != mark) {
+      _celebrated = mark;
+      _celebration = now;
+    }
+    notifyListeners();
     _changed();
     if (healthWrite) await _quietly(() => health.writeEntry(entry));
   }
@@ -721,6 +748,9 @@ class AppController extends ChangeNotifier {
     final today = dateKey(DateTime.now());
     if (date == previousToday && today != previousToday) {
       await goToDate(today);
+    } else if (today != previousToday) {
+      // Die Serie bezieht sich auf heute.
+      await reload();
     }
     await syncNow();
     await syncHealth();

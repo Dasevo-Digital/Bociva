@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../controller.dart';
+import '../widgets/brand.dart';
 import '../format.dart';
 import 'ai_screen.dart';
 import 'custom_food_screen.dart';
@@ -281,13 +282,11 @@ class _AddFoodScreenState extends State<AddFoodScreen> {
                     if (!_picking || f.source != FoodSource.recipe)
                       _FoodTile(food: f, onTap: _open),
                   if (_recent.isEmpty && (_recipes.isEmpty || _picking))
-                    const Padding(
-                      padding: EdgeInsets.all(32),
-                      child: Text(
-                        'Suche ein Lebensmittel, scanne einen Strichcode oder '
-                        'beschreibe dein Essen für die KI-Analyse.',
-                        textAlign: TextAlign.center,
-                      ),
+                    const MascotHint(
+                      height: 120,
+                      text:
+                          'Suche ein Lebensmittel, scanne einen Strichcode oder '
+                          'beschreibe dein Essen für die KI-Analyse.',
                     ),
                 ] else ...[
                   for (final f in _local) _FoodTile(food: f, onTap: _open),

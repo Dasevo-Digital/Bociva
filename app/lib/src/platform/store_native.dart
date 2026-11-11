@@ -129,6 +129,16 @@ class SqliteStore implements LocalStore {
           .toList();
 
   @override
+  Future<Set<String>> datesWith(String kind) async => {
+    for (final r in db.select(
+      'SELECT DISTINCT date FROM records WHERE kind = ? AND deleted = 0 '
+      'AND date IS NOT NULL',
+      [kind],
+    ))
+      r['date'] as String,
+  };
+
+  @override
   Future<List<SyncRecord>> all(String kind) async => db
       .select('SELECT * FROM records WHERE kind = ? AND deleted = 0', [kind])
       .map(_row)

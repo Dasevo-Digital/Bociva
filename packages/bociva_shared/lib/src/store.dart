@@ -105,6 +105,9 @@ abstract class LocalStore {
   /// Alle nicht gelöschten Datensätze einer Art.
   Future<List<SyncRecord>> all(String kind);
 
+  /// Die Tage, an denen es nicht gelöschte Datensätze der Art gibt.
+  Future<Set<String>> datesWith(String kind);
+
   Future<List<SyncRecord>> dirty({int limit = 500});
 
   /// Nimmt die Markierung nur, wenn sich der Datensatz seit dem Lesen nicht
@@ -160,6 +163,12 @@ class MemoryStore implements LocalStore {
   @override
   Future<List<SyncRecord>> all(String kind) async =>
       _records.values.where((r) => r.kind == kind && !r.deleted).toList();
+
+  @override
+  Future<Set<String>> datesWith(String kind) async => {
+    for (final r in _records.values)
+      if (r.kind == kind && !r.deleted && r.date != null) r.date!,
+  };
 
   @override
   Future<List<SyncRecord>> dirty({int limit = 500}) async => [

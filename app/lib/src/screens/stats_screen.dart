@@ -6,6 +6,7 @@ import '../controller.dart';
 import '../format.dart';
 import '../theme.dart';
 import '../widgets/charts.dart';
+import '../widgets/streak.dart';
 
 class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
@@ -133,6 +134,45 @@ class _StatsScreenState extends State<StatsScreen> {
             }),
           ),
           const SizedBox(height: 12),
+          if (app.streak case final streak?) ...[
+            Card(
+              key: const Key('stats-streak'),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        FlameBadge(lit: streak.todayDone, size: 40),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Serie', style: heading),
+                              Text(
+                                '${daysLabel(streak.current)} in Folge · '
+                                'längste ${daysLabel(streak.longest)}',
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Einzelheiten',
+                          icon: const Icon(Icons.chevron_right),
+                          onPressed: () => showStreakSheet(context, streak),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    StreakCalendar(streak: streak),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -151,7 +191,9 @@ class _StatsScreenState extends State<StatsScreen> {
                     values: [for (final d in _summaries) d.consumed.kcal],
                     labels: _labels,
                     goal: _summaries.lastOrNull?.goals.kcal,
-                    color: theme.colorScheme.primary,
+                    color: theme.brightness == Brightness.dark
+                        ? BocivaColors.leaf
+                        : BocivaColors.green,
                   ),
                 ],
               ),

@@ -10,6 +10,9 @@ import 'package:intl/intl.dart';
 import '../controller.dart';
 import '../format.dart';
 import '../platform/health_bridge.dart';
+import '../theme.dart';
+import '../widgets/brand.dart';
+import '../widgets/streak.dart';
 import 'connect_screen.dart';
 import 'profile_form.dart';
 import 'recipes_screen.dart';
@@ -25,6 +28,8 @@ class SettingsScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
         children: [
+          _BrandHeader(app: app),
+          const SizedBox(height: 16),
           _Section('Profil', [
             ListTile(
               key: const Key('open-profile'),
@@ -100,6 +105,63 @@ class SettingsScreen extends StatelessWidget {
             ),
           ]),
         ],
+      ),
+    );
+  }
+}
+
+/// Maskottchen, Schriftzug und Serie oben auf der Seite.
+class _BrandHeader extends StatelessWidget {
+  const _BrandHeader({required this.app});
+  final AppController app;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final streak = app.streak;
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Ink(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: theme.brightness == Brightness.dark
+                ? const [Color(0xFF1D3324), Color(0xFF19271F)]
+                : [BocivaColors.lime.withValues(alpha: 0.5), Colors.white],
+          ),
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        child: Row(
+          children: [
+            const Mascot(height: 88),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: BrandWordmark(width: 150),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    app.username != null
+                        ? 'Angemeldet als ${app.username}'
+                        : 'Deine Daten bleiben auf diesem Gerät',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                  if (streak != null && streak.longest > 0)
+                    Text(
+                      'Längste Serie: ${daysLabel(streak.longest)}',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -56,3 +56,61 @@ class MascotHint extends StatelessWidget {
     ),
   );
 }
+
+/// Rundes, farbig getöntes Symbol wie auf dem Telefon des Maskottchens.
+class IconBubble extends StatelessWidget {
+  const IconBubble({
+    super.key,
+    required this.icon,
+    required this.color,
+    this.size = 42,
+  });
+  final IconData icon;
+  final Color color;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: color.withValues(alpha: dark ? 0.22 : 0.16),
+      ),
+      child: Icon(icon, color: color, size: size * 0.55),
+    );
+  }
+}
+
+/// Großes, angedeutetes Blatt als Verzierung auf farbigen Flächen.
+class LeafDecoration extends CustomPainter {
+  const LeafDecoration({required this.color});
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width, h = size.height;
+    final leaf = Path()
+      ..moveTo(w * 0.62, h * 1.05)
+      ..quadraticBezierTo(w * 0.70, h * 0.05, w * 1.12, -h * 0.05)
+      ..quadraticBezierTo(w * 1.02, h * 0.85, w * 0.62, h * 1.05)
+      ..close();
+    canvas.drawPath(leaf, Paint()..color = color);
+    final vein = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round;
+    canvas.drawPath(
+      Path()
+        ..moveTo(w * 0.66, h * 0.98)
+        ..quadraticBezierTo(w * 0.86, h * 0.45, w * 1.08, 0),
+      vein,
+    );
+  }
+
+  @override
+  bool shouldRepaint(LeafDecoration old) => old.color != color;
+}

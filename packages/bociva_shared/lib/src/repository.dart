@@ -4,6 +4,7 @@ import 'basic_foods.dart';
 import 'goals.dart';
 import 'models.dart';
 import 'store.dart';
+import 'streak.dart';
 
 /// Typisierter Zugriff auf die Daten eines Geräts.
 class BocivaRepository {
@@ -305,6 +306,12 @@ class BocivaRepository {
       _put(RecordKind.fasting, session.id, session.ended(nowMs).toJson());
 
   Future<void> deleteFasting(String id) => _delete(RecordKind.fasting, id);
+
+  // Serie
+
+  /// Wie viele Tage bis [today] in Folge Essen eingetragen wurde.
+  Future<Streak> streak(String today) async =>
+      Streak.fromDates(await store.datesWith(RecordKind.diary), today);
 
   // Zusammenfassung
 

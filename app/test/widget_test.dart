@@ -5,6 +5,7 @@ import 'package:bociva/src/platform/store_common.dart';
 import 'package:bociva/src/platform/store_native.dart';
 import 'package:bociva/src/screens/connect_screen.dart';
 import 'package:bociva/src/screens/profile_form.dart';
+import 'package:bociva/src/screens/shell.dart';
 import 'package:bociva/src/theme.dart';
 import 'package:bociva/src/widgets/charts.dart';
 import 'package:bociva_shared/bociva_shared.dart';
@@ -45,6 +46,8 @@ void main() {
         '2026-11-30',
       );
       expect(found.single.id, 'a');
+      expect(await store.datesWith(RecordKind.water), {'2026-11-09'});
+      expect(await store.datesWith(RecordKind.diary), isEmpty);
       expect(await store.countLive(), 1);
       expect(await store.dirty(), hasLength(2));
     });
@@ -190,6 +193,72 @@ void main() {
       );
       expect(box.value, isFalse);
       expect(find.textContaining('anna (a.example)'), findsOneWidget);
+    });
+
+    Future<void> startWithDays(WidgetTester tester, List<int> daysAgo) async {
+      await tester.runAsync(() async {
+        await app.start();
+        await app.saveProfile(
+          const Profile(
+            sex: Sex.male,
+            birthYear: 1985,
+            heightCm: 180,
+            weightKg: 80,
+          ),
+        );
+        final now = DateTime.now();
+        for (final d in daysAgo) {
+          await app.repo.logFood(
+            basicFoods.first,
+            date: dateKey(DateTime(now.year, now.month, now.day - d)),
+            meal: Meal.lunch,
+            amount: 100,
+          );
+        }
+        await app.reload();
+      });
+      await tester.pumpWidget(
+        ControllerScope(
+          controller: app,
+          child: MaterialApp(
+            theme: bocivaTheme(Brightness.light),
+            home: const Shell(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('Serie hält bis Mitternacht und wächst mit dem Eintrag', (
+      tester,
+    ) async {
+      await startWithDays(tester, [1]);
+      expect(find.text('1 Tag in Folge'), findsOneWidget);
+      expect(find.textContaining('damit deine Serie hält'), findsOneWidget);
+      await tester.runAsync(
+        () => app.logFood(basicFoods.first, Meal.dinner, 50),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('streak-snack')), findsOneWidget);
+      expect(find.text('2 Tage in Folge'), findsOneWidget);
+      // Ein zweiter Eintrag am selben Tag verlängert nichts.
+      await tester.runAsync(
+        () => app.logFood(basicFoods.first, Meal.snack, 20),
+      );
+      expect(app.hasCelebration, isFalse);
+    });
+
+    testWidgets('Meilenstein wird groß gewürdigt', (tester) async {
+      await startWithDays(tester, [2, 1]);
+      await tester.runAsync(
+        () => app.logFood(basicFoods.first, Meal.breakfast, 80),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('streak-dialog')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('streak-dialog-ok')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('streak-dialog')), findsNothing);
+      expect(app.streak!.current, 3);
     });
   });
 

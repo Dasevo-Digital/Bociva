@@ -46,13 +46,21 @@ class _RingPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round;
     canvas.drawArc(arc, 0, 2 * pi, false, track);
     if (fraction > 0) {
-      canvas.drawArc(
-        arc,
-        -pi / 2,
-        2 * pi * fraction,
-        false,
-        track..color = over ? const Color(0xFFFFB4A1) : BocivaColors.coral,
-      );
+      final progress = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke
+        ..strokeCap = StrokeCap.round;
+      if (over) {
+        progress.color = BocivaColors.fatOnGreen;
+      } else {
+        // Von Hellgrün zu Lindgrün wie die Blätter im Icon.
+        progress.shader = SweepGradient(
+          colors: const [BocivaColors.lime, BocivaColors.leaf],
+          stops: [0, fraction.clamp(0.01, 1)],
+          transform: const GradientRotation(-pi / 2),
+        ).createShader(arc);
+      }
+      canvas.drawArc(arc, -pi / 2, 2 * pi * fraction, false, progress);
     }
   }
 

@@ -11,4 +11,5 @@ export 'src/open_food_facts.dart';
 export 'src/repository.dart';
 export 'src/server_url.dart';
 export 'src/store.dart';
+export 'src/streak.dart';
 export 'src/sync.dart';

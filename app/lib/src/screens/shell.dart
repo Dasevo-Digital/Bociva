@@ -2,6 +2,7 @@ import 'package:bociva_shared/bociva_shared.dart';
 import 'package:flutter/material.dart';
 
 import '../controller.dart';
+import '../widgets/streak.dart';
 import 'diary_screen.dart';
 import 'settings_screen.dart';
 import 'stats_screen.dart';
@@ -46,8 +47,21 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
     }
   }
 
+  /// Erst zeigen, wenn die Eingabemasken geschlossen sind; sonst schlösse
+  /// deren `pop` die Würdigung.
+  void _maybeCelebrate(AppController app) {
+    final current = ModalRoute.of(context)?.isCurrent ?? true;
+    if (!app.hasCelebration || !current) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !(ModalRoute.of(context)?.isCurrent ?? true)) return;
+      final streak = app.takeCelebration();
+      if (streak != null) celebrateStreak(context, streak);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    _maybeCelebrate(context.app);
     final wide = MediaQuery.sizeOf(context).width >= 840;
     final body = IndexedStack(index: _index, children: _pages);
     if (wide) {

@@ -52,8 +52,10 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do
 done
 if [ "$ok" -eq 1 ]; then
   echo "Bociva läuft."
-  # Steht nur im Protokoll, solange es noch kein Konto gibt.
-  journalctl -u bociva --no-pager -o cat | grep 'Einrichtungscode' | tail -n 1 || true
+  # Steht nur im Protokoll, solange es noch kein Konto gibt. Nur der jetzige
+  # Start zählt; ältere Starts zeigen sonst einen längst verbrauchten Code.
+  INVOCATION=$(systemctl show -p InvocationID --value bociva)
+  journalctl --no-pager -o cat "_SYSTEMD_INVOCATION_ID=$INVOCATION" | grep 'Einrichtungscode' | tail -n 1 || true
 else
   echo "Bociva startet nicht – siehe: journalctl -u bociva" >&2
   exit 1

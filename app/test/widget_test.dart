@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:bociva/src/controller.dart';
 import 'package:bociva/src/platform/health_bridge.dart';
+import 'package:bociva/src/platform/reminders.dart';
 import 'package:bociva/src/platform/store_common.dart';
 import 'package:bociva/src/platform/store_native.dart';
 import 'package:bociva/src/screens/connect_screen.dart';
@@ -249,6 +250,24 @@ void main() {
       expect(app.hasCelebration, isFalse);
     });
 
+    testWidgets('Mahlzeit vom Vortag mit einem Tipp übernehmen', (
+      tester,
+    ) async {
+      await startWithDays(tester, [1]);
+      final chip = find.byKey(const Key('repeat-lunch'));
+      await tester.scrollUntilVisible(chip, 200);
+      await tester.ensureVisible(chip);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Wie am Vortag'), findsOneWidget);
+      await tester.tap(chip);
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      await tester.pumpAndSettle();
+      expect(app.day!.entries.single.meal, Meal.lunch);
+      expect(find.byKey(const Key('repeat-lunch')), findsNothing);
+      // Der Vortag zählt mit: die Serie wächst auf zwei Tage.
+      expect(app.streak!.current, 2);
+    });
+
     testWidgets('Meilenstein wird groß gewürdigt', (tester) async {
       await startWithDays(tester, [2, 1]);
       await tester.runAsync(
@@ -261,6 +280,17 @@ void main() {
       expect(find.byKey(const Key('streak-dialog')), findsNothing);
       expect(app.streak!.current, 3);
     });
+  });
+
+  test('Erinnerungstext nennt die Serie nur, wenn sie sicher ist', () {
+    final open = Streak.fromDates({'2026-03-02', '2026-03-03'}, '2026-03-04');
+    expect(reminderText(open, 0), contains('2 Tagen'));
+    expect(reminderText(open, 1), isNot(contains('Tagen')));
+    final done = Streak.fromDates({'2026-03-03', '2026-03-04'}, '2026-03-04');
+    expect(reminderText(done, 1), contains('2 Tagen'));
+    expect(reminderText(done, 3), contains('Jeder Tag zählt'));
+    final none = Streak.fromDates({}, '2026-03-04');
+    expect(reminderText(none, 0), contains('Jeder Tag zählt'));
   });
 
   test('Health-Zeit trennt Einträge derselben Sekunde', () {

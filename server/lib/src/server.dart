@@ -18,7 +18,7 @@ import 'database.dart';
 import 'limits.dart';
 import 'web_app.dart';
 
-const version = '0.1.0';
+const version = '0.2.0';
 
 class BocivaServer {
   BocivaServer._(this._http, this._db, this.setupCode, this._purge);

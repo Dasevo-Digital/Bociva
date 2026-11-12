@@ -108,6 +108,37 @@ class BocivaRepository {
     return entry;
   }
 
+  /// Übernimmt die Einträge einer Mahlzeit von [fromDate] nach [toDate].
+  /// Jeder Eintrag bekommt eine eigene Millisekunde, damit Apple Health sie
+  /// auseinanderhält.
+  Future<List<DiaryEntry>> copyMeal({
+    required String fromDate,
+    required String toDate,
+    required Meal meal,
+  }) async {
+    final source = (await diary(fromDate)).where((e) => e.meal == meal);
+    final start = nowMs;
+    final copies = <DiaryEntry>[];
+    for (final (i, e) in source.indexed) {
+      final copy = DiaryEntry(
+        id: newId(),
+        date: toDate,
+        meal: meal,
+        name: e.name,
+        brand: e.brand,
+        foodId: e.foodId,
+        amount: e.amount,
+        unit: e.unit,
+        nutrients: e.nutrients,
+        createdAt: start + i,
+        estimated: e.estimated,
+      );
+      await saveDiary(copy);
+      copies.add(copy);
+    }
+    return copies;
+  }
+
   // Lebensmittel
 
   Future<void> saveFood(Food f) => _put(RecordKind.food, f.id, f.toJson());

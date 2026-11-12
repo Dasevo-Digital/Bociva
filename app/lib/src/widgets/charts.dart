@@ -180,53 +180,92 @@ class _BarPainter extends CustomPainter {
 }
 
 class LineChart extends StatelessWidget {
-  const LineChart({super.key, required this.values, required this.color});
+  const LineChart({
+    super.key,
+    required this.values,
+    required this.color,
+    this.trend,
+    this.trendColor,
+  });
 
   final List<double> values;
   final Color color;
+
+  /// Geglättete Werte zu [values]. Dann zeigen die Messungen nur Punkte und
+  /// der Trend die Linie.
+  final List<double>? trend;
+  final Color? trendColor;
 
   @override
   Widget build(BuildContext context) => SizedBox(
     height: 120,
     width: double.infinity,
-    child: CustomPaint(painter: _LinePainter(values, color)),
+    child: CustomPaint(
+      painter: _LinePainter(values, color, trend, trendColor ?? color),
+    ),
   );
 }
 
 class _LinePainter extends CustomPainter {
-  _LinePainter(this.values, this.color);
+  _LinePainter(this.values, this.color, this.trend, this.trendColor);
   final List<double> values;
   final Color color;
+  final List<double>? trend;
+  final Color trendColor;
 
   @override
   void paint(Canvas canvas, Size size) {
     if (values.isEmpty) return;
-    final low = values.reduce(min) - 0.5;
-    final high = values.reduce(max) + 0.5;
-    Offset at(int i) => Offset(
-      values.length == 1
-          ? size.width / 2
-          : size.width * i / (values.length - 1),
-      size.height - (values[i] - low) / (high - low) * size.height,
+    final all = [...values, ...?trend];
+    final low = all.reduce(min) - 0.5;
+    final high = all.reduce(max) + 0.5;
+    Offset at(List<double> v, int i) => Offset(
+      v.length == 1 ? size.width / 2 : size.width * i / (v.length - 1),
+      size.height - (v[i] - low) / (high - low) * size.height,
     );
-    final path = Path()..moveTo(at(0).dx, at(0).dy);
-    for (var i = 1; i < values.length; i++) {
-      path.lineTo(at(i).dx, at(i).dy);
+    void line(List<double> v, Color c) {
+      final path = Path()..moveTo(at(v, 0).dx, at(v, 0).dy);
+      for (var i = 1; i < v.length; i++) {
+        path.lineTo(at(v, i).dx, at(v, i).dy);
+      }
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = c
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3
+          ..strokeJoin = StrokeJoin.round
+          ..strokeCap = StrokeCap.round,
+      );
     }
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = color
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 3
-        ..strokeJoin = StrokeJoin.round,
-    );
+
+    final smooth = trend;
+    if (smooth != null && smooth.length == values.length) {
+      for (var i = 0; i < values.length; i++) {
+        canvas.drawCircle(
+          at(values, i),
+          3.5,
+          Paint()..color = color.withValues(alpha: 0.55),
+        );
+      }
+      line(smooth, trendColor);
+      canvas.drawCircle(
+        at(smooth, smooth.length - 1),
+        5,
+        Paint()..color = trendColor,
+      );
+      return;
+    }
+    line(values, color);
     for (var i = 0; i < values.length; i++) {
-      canvas.drawCircle(at(i), 4, Paint()..color = color);
+      canvas.drawCircle(at(values, i), 4, Paint()..color = color);
     }
   }
 
   @override
   bool shouldRepaint(_LinePainter old) =>
-      old.values != values || old.color != color;
+      old.values != values ||
+      old.color != color ||
+      old.trend != trend ||
+      old.trendColor != trendColor;
 }

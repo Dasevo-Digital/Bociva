@@ -18,7 +18,10 @@ class Streak {
   static const milestones = [3, 7, 14, 30, 50, 100, 150, 200, 365, 500, 1000];
 
   factory Streak.fromDates(Set<String> dates, String today) {
-    final days = {for (final d in dates) if (d.compareTo(today) <= 0) d};
+    final days = {
+      for (final d in dates)
+        if (d.compareTo(today) <= 0) d,
+    };
     final start = parseDateKey(today);
     String back(int i) =>
         dateKey(DateTime(start.year, start.month, start.day - i));

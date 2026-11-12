@@ -62,6 +62,7 @@ class SettingsScreen extends StatelessWidget {
               onChanged: app.setFastingEnabled,
             ),
           ]),
+          if (app.reminders.supported) const _ReminderSection(),
           const _ServerSection(),
           _Section('KI-Analyse', [
             ListTile(
@@ -107,6 +108,65 @@ class SettingsScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Abend-Erinnerung, damit die Serie nicht reißt.
+class _ReminderSection extends StatelessWidget {
+  const _ReminderSection();
+
+  Future<void> _set(BuildContext context, int? minutes) async {
+    final messenger = ScaffoldMessenger.of(context);
+    if (!await context.app.setReminder(minutes)) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Benachrichtigungen sind für Bociva nicht erlaubt. Du kannst sie '
+            'in den Einstellungen des Telefons einschalten.',
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _pickTime(BuildContext context, int minutes) async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60),
+      helpText: 'Erinnern um',
+    );
+    if (picked != null && context.mounted) {
+      await _set(context, picked.hour * 60 + picked.minute);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final minutes = context.app.reminderMinutes;
+    return _Section('Erinnerung', [
+      SwitchListTile(
+        key: const Key('reminder-toggle'),
+        secondary: const Icon(Icons.notifications_outlined),
+        title: const Text('Abends erinnern'),
+        subtitle: const Text(
+          'Nur wenn an dem Tag noch nichts eingetragen ist, damit deine '
+          'Serie nicht reißt.',
+        ),
+        value: minutes != null,
+        onChanged: (on) => _set(context, on ? 20 * 60 : null),
+      ),
+      if (minutes != null)
+        ListTile(
+          key: const Key('reminder-time'),
+          leading: const Icon(Icons.schedule),
+          title: const Text('Uhrzeit'),
+          trailing: Text(
+            '${(minutes ~/ 60).toString().padLeft(2, '0')}:'
+            '${(minutes % 60).toString().padLeft(2, '0')} Uhr',
+          ),
+          onTap: () => _pickTime(context, minutes),
+        ),
+    ]);
   }
 }
 

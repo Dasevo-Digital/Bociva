@@ -769,6 +769,99 @@ Klar! ```json
       expect((await repo.streak('2026-04-04')).current, 0);
     });
   });
+
+  test('Mahlzeit vom Vortag übernehmen', () async {
+    var now = DateTime(2026, 5, 2, 8);
+    final repo = BocivaRepository(MemoryStore(), clock: () => now);
+    for (final f in basicFoods.take(2)) {
+      await repo.logFood(
+        f,
+        date: '2026-05-01',
+        meal: Meal.breakfast,
+        amount: 50,
+      );
+    }
+    await repo.logFood(
+      basicFoods[3],
+      date: '2026-05-01',
+      meal: Meal.dinner,
+      amount: 200,
+    );
+    final copies = await repo.copyMeal(
+      fromDate: '2026-05-01',
+      toDate: '2026-05-02',
+      meal: Meal.breakfast,
+    );
+    expect(copies, hasLength(2));
+    final today = await repo.diary('2026-05-02');
+    expect(today.map((e) => e.name), [basicFoods[0].name, basicFoods[1].name]);
+    expect(today.map((e) => e.meal).toSet(), {Meal.breakfast});
+    // Neue IDs und verschiedene Zeitpunkte, der Vortag bleibt unverändert.
+    expect(today.map((e) => e.id).toSet(), hasLength(2));
+    expect(today[0].createdAt, isNot(today[1].createdAt));
+    expect(await repo.diary('2026-05-01'), hasLength(3));
+    expect(
+      await repo.copyMeal(
+        fromDate: '2026-05-01',
+        toDate: '2026-05-02',
+        meal: Meal.lunch,
+      ),
+      isEmpty,
+    );
+  });
+
+  group('Gewichtstrend', () {
+    List<WeightEntry> series(double start, double perDay, int days) => [
+      for (var i = 0; i < days; i++)
+        WeightEntry(
+          date: dateKey(DateTime(2026, 1, 1 + i)),
+          kg: start + perDay * i + (i.isEven ? 0.6 : -0.6),
+        ),
+    ];
+
+    test('glättet Schwankungen und misst das Tempo', () {
+      final t = WeightTrend.of(series(80, -0.1, 42), target: 74);
+      // Rohwerte springen um 1,2 kg, der Trend kaum.
+      final jumps = [
+        for (var i = 1; i < t.trend.length; i++)
+          (t.trend[i] - t.trend[i - 1]).abs(),
+      ];
+      expect(jumps.reduce((a, b) => a > b ? a : b), lessThan(0.35));
+      expect(t.ratePerWeek, closeTo(-0.7, 0.15));
+      expect(t.eta, isNotNull);
+      expect(t.eta!.isAfter(DateTime(2026, 2, 11)), isTrue);
+      expect(t.awayFromTarget, isFalse);
+    });
+
+    test('bemerkt, wenn es vom Ziel weggeht', () {
+      final t = WeightTrend.of(series(70, 0.05, 30), target: 65);
+      expect(t.ratePerWeek, greaterThan(0));
+      expect(t.eta, isNull);
+      expect(t.awayFromTarget, isTrue);
+    });
+
+    test('zu wenige Messungen ergeben kein Tempo', () {
+      final t = WeightTrend.of(const [
+        WeightEntry(date: '2026-01-01', kg: 80),
+        WeightEntry(date: '2026-01-03', kg: 79.5),
+      ], target: 75);
+      expect(t.trend, hasLength(2));
+      expect(t.ratePerWeek, isNull);
+      expect(t.eta, isNull);
+    });
+
+    test('Ziel erreicht und leere Liste', () {
+      expect(
+        WeightTrend.of(const [
+          WeightEntry(date: '2026-01-01', kg: 65.1),
+        ], target: 65).reached,
+        isTrue,
+      );
+      final empty = WeightTrend.of(const []);
+      expect(empty.current, isNull);
+      expect(empty.trend, isEmpty);
+    });
+  });
 }
 
 class _Fake implements SyncTransport {

@@ -13,3 +13,4 @@ export 'src/server_url.dart';
 export 'src/store.dart';
 export 'src/streak.dart';
 export 'src/sync.dart';
+export 'src/weight_trend.dart';

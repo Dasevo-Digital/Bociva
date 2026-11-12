@@ -180,6 +180,15 @@ def main():
         save(place(art_alpha, round(140 * d), 1.0, background=None),
              RES / f'drawable-{name}/launch_image.png')
 
+    # Android: Symbol für Benachrichtigungen, nur Weiß auf Durchsichtig.
+    sil = np.array(art_alpha)
+    sil[:, :, :3] = 255
+    sil[:, :, 3] = np.where(sil[:, :, 3] > 90, 255, 0)
+    silhouette = Image.fromarray(sil)
+    for name, d in densities.items():
+        save(place(silhouette, round(24 * d), 0.92, background=None),
+             RES / f'drawable-{name}/ic_stat_bociva.png')
+
     # Web: Favicon, PWA-Icons, Apple-Touch-Icon.
     web = APP / 'web'
     save(place(art, 64, 0.84, radius=0.22), web / 'favicon.png')

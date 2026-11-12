@@ -8,6 +8,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'platform/health_bridge.dart';
+import 'platform/reminders.dart';
 import 'platform/store.dart';
 import 'platform/unload.dart';
 
@@ -62,11 +63,17 @@ class AppController extends ChangeNotifier {
   static const _kDbKey = 'db_key';
   static const _kSession = 'session';
   static const _kAi = 'ai_config';
-  static const _userAgent = 'Bociva/0.1';
+  static const _userAgent = 'Bociva/0.2';
 
   late LocalStore _store;
   late BocivaRepository repo;
   final HealthBridge health = createHealthBridge();
+  final Reminders reminders = Reminders();
+
+  /// Uhrzeit der Abend-Erinnerung in Minuten nach Mitternacht, `null` = aus.
+  /// Gilt nur für dieses Gerät.
+  int? reminderMinutes;
+  String? _plannedReminders;
 
   bool ready = false;
   String? startError;
@@ -81,6 +88,9 @@ class AppController extends ChangeNotifier {
 
   /// Tage in Folge mit eingetragenem Essen.
   Streak? streak;
+
+  /// Einträge des Vortags von [date], für „Wie gestern“.
+  List<DiaryEntry> previousDay = const [];
 
   /// Eine gerade verlängerte Serie, die die Oberfläche noch würdigen soll.
   Streak? _celebration;
@@ -206,6 +216,7 @@ class AppController extends ChangeNotifier {
         apiKey: j['apiKey'] as String?,
       );
     }
+    reminderMinutes = int.tryParse(await _store.meta('reminder.time') ?? '');
     healthEnabled = await _store.meta('health.enabled') == '1';
     healthWrite = await _store.meta('health.write') == '1';
     final last = int.tryParse(await _store.meta('sync.last') ?? '');
@@ -263,6 +274,10 @@ class AppController extends ChangeNotifier {
         ? await repo.activeFasting()
         : null;
     streak = await repo.streak(dateKey(DateTime.now()));
+    _planReminders();
+    previousDay = profile == null
+        ? const []
+        : await repo.diary(_shift(date, -1));
     dataVersion++;
     if (notify) notifyListeners();
   }
@@ -307,6 +322,11 @@ class AppController extends ChangeNotifier {
     _changed();
   }
 
+  static String _shift(String day, int days) {
+    final d = parseDateKey(day);
+    return dateKey(DateTime(d.year, d.month, d.day + days));
+  }
+
   Future<void> logFood(Food food, Meal meal, double amount) async {
     final before = streak?.current ?? 0;
     final entry = await repo.logFood(
@@ -315,6 +335,23 @@ class AppController extends ChangeNotifier {
       meal: meal,
       amount: amount,
     );
+    await _afterLogging(before, [entry]);
+  }
+
+  /// Übernimmt eine Mahlzeit von [fromDate] (Standard: Vortag) in den
+  /// angezeigten Tag. Gibt die Zahl der Einträge zurück.
+  Future<int> copyMeal(Meal meal, {String? fromDate}) async {
+    final before = streak?.current ?? 0;
+    final copies = await repo.copyMeal(
+      fromDate: fromDate ?? _shift(date, -1),
+      toDate: date,
+      meal: meal,
+    );
+    if (copies.isNotEmpty) await _afterLogging(before, copies);
+    return copies.length;
+  }
+
+  Future<void> _afterLogging(int before, List<DiaryEntry> entries) async {
     await reload(notify: false);
     final now = streak!;
     // Einmal pro Länge und Tag, auch wenn ein Eintrag gelöscht und neu
@@ -328,7 +365,11 @@ class AppController extends ChangeNotifier {
     }
     notifyListeners();
     _changed();
-    if (healthWrite) await _quietly(() => health.writeEntry(entry));
+    if (healthWrite) {
+      for (final e in entries) {
+        await _quietly(() => health.writeEntry(e));
+      }
+    }
   }
 
   Future<void> updateEntry(DiaryEntry e, double amount) async {
@@ -440,6 +481,34 @@ class AppController extends ChangeNotifier {
     } on Object catch (e) {
       debugPrint('Health: $e');
     }
+  }
+
+  // Erinnerung
+
+  /// Schaltet die Abend-Erinnerung ein ([minutes] nach Mitternacht) oder aus
+  /// (`null`). `false`, wenn das System keine Benachrichtigungen erlaubt.
+  Future<bool> setReminder(int? minutes) async {
+    if (minutes != null && !await reminders.requestPermission()) return false;
+    reminderMinutes = minutes;
+    await _store.setMeta('reminder.time', minutes?.toString());
+    _plannedReminders = null;
+    if (minutes == null) {
+      await _quietly(reminders.cancel);
+    } else {
+      _planReminders();
+    }
+    notifyListeners();
+    return true;
+  }
+
+  /// Plant neu, wenn sich Uhrzeit, Tag oder Serie geändert haben.
+  void _planReminders() {
+    final minutes = reminderMinutes, s = streak;
+    if (minutes == null || s == null || !reminders.supported) return;
+    final key = '${s.today}|${s.todayDone}|${s.current}|$minutes';
+    if (key == _plannedReminders) return;
+    _plannedReminders = key;
+    unawaited(_quietly(() => reminders.schedule(minutes: minutes, streak: s)));
   }
 
   // Server
@@ -781,6 +850,7 @@ class AppController extends ChangeNotifier {
 
   /// Entfernt alle Daten von diesem Gerät.
   Future<void> wipeDevice() async {
+    if (reminderMinutes != null) await setReminder(null);
     await disconnect(force: true);
     await _store.clearAll();
     await _secrets.delete(key: _kAi);

@@ -91,7 +91,7 @@ Food? foodFromOpenFoodFacts(Map<String, Object?> product) {
 
 /// Greift direkt auf Open Food Facts zu (ODbL; die App nennt die Quelle).
 class OpenFoodFactsClient implements FoodLookup {
-  OpenFoodFactsClient({http.Client? client, this.userAgent = 'Bociva/0.1'})
+  OpenFoodFactsClient({http.Client? client, this.userAgent = 'Bociva/0.2'})
     : _client = client ?? http.Client();
 
   static final _base = Uri.https('world.openfoodfacts.org');

@@ -149,6 +149,9 @@ class _StatsScreenState extends State<StatsScreen> {
         ? 0.0
         : logged.fold(0.0, (s, d) => s + d.consumed.kcal) / logged.length;
     final theme = Theme.of(context);
+    final trend = _weights.isEmpty
+        ? null
+        : WeightTrend.of(_weights, target: app.profile?.targetWeightKg);
     final heading = theme.textTheme.titleMedium!.copyWith(
       fontWeight: FontWeight.w800,
     );
@@ -279,11 +282,27 @@ class _StatsScreenState extends State<StatsScreen> {
                       'Aktuell ${fmtOne(_weights.last.kg)} kg',
                       key: const Key('weight-current'),
                     ),
+                    _TrendText(
+                      trend: trend!,
+                      target: app.profile?.targetWeightKg,
+                    ),
                     const SizedBox(height: 12),
                     LineChart(
                       values: [for (final w in _weights) w.kg],
                       color: BocivaColors.coral,
+                      trend: trend.trend,
+                      trendColor: theme.brightness == Brightness.dark
+                          ? BocivaColors.leaf
+                          : BocivaColors.green,
                     ),
+                    if (trend.trend.length > 1)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(
+                          'Punkte: Messungen · Linie: geglätteter Trend',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                      ),
                   ],
                 ],
               ),
@@ -359,6 +378,48 @@ class _StatsScreenState extends State<StatsScreen> {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// Trend, Tempo und Prognose in Worten.
+class _TrendText extends StatelessWidget {
+  const _TrendText({required this.trend, required this.target});
+  final WeightTrend trend;
+  final double? target;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final current = trend.current;
+    final rate = trend.ratePerWeek;
+    final lines = <String>[
+      if (current != null && trend.trend.length > 1)
+        'Trend ${fmtOne(current)} kg'
+            '${rate == null ? '' : ' · ${rate > 0
+                      ? '+'
+                      : rate < 0
+                      ? '−'
+                      : '±'}${fmtOne(rate.abs())} kg pro Woche'}',
+      if (target != null)
+        if (trend.reached)
+          'Zielgewicht ${fmtOne(target!)} kg erreicht.'
+        else if (trend.eta case final eta?)
+          'Ziel ${fmtOne(target!)} kg beim jetzigen Tempo etwa '
+              '${DateFormat('MMMM y', 'de').format(eta)}.'
+        else if (trend.awayFromTarget)
+          'Der Trend geht gerade vom Ziel ${fmtOne(target!)} kg weg.'
+        else if (rate == null)
+          'Für eine Prognose braucht es Messungen über mindestens eine Woche.',
+    ];
+    if (lines.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 2),
+      child: Text(
+        lines.join('\n'),
+        key: const Key('weight-trend'),
+        style: theme.textTheme.bodySmall,
       ),
     );
   }

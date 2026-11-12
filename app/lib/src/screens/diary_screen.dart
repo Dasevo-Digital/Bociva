@@ -278,9 +278,43 @@ class _MealCard extends StatelessWidget {
   final Meal meal;
   final DaySummary day;
 
+  Future<void> _copy(BuildContext context, {String? fromDate}) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final count = await context.app.copyMeal(meal, fromDate: fromDate);
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          count == 0
+              ? 'An dem Tag war bei ${meal.label} nichts eingetragen.'
+              : count == 1
+              ? '1 Eintrag übernommen'
+              : '$count Einträge übernommen',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _copyFromDay(BuildContext context) async {
+    final app = context.app;
+    final shown = parseDateKey(app.date);
+    final picked = await showDatePicker(
+      context: context,
+      helpText: '${meal.label} übernehmen von',
+      initialDate: DateTime(shown.year, shown.month, shown.day - 1),
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+    );
+    if (picked == null || !context.mounted) return;
+    final from = dateKey(picked);
+    if (from == app.date) return;
+    await _copy(context, fromDate: from);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final app = context.app;
     final entries = day.entries.where((e) => e.meal == meal).toList();
+    final previous = app.previousDay.where((e) => e.meal == meal).toList();
     final kcal = day.consumedIn(meal).kcal;
     final theme = Theme.of(context);
     final (icon, color) = switch (meal) {
@@ -307,17 +341,63 @@ class _MealCard extends StatelessWidget {
                     ? 'Noch nichts eingetragen'
                     : '${fmtInt(kcal)} kcal',
               ),
-              trailing: IconButton.filledTonal(
-                key: Key('add-${meal.name}'),
-                tooltip: '${meal.label} hinzufügen',
-                icon: const Icon(Icons.add),
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => AddFoodScreen(meal: meal),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  PopupMenuButton<String>(
+                    key: Key('meal-menu-${meal.name}'),
+                    tooltip: 'Weitere Aktionen',
+                    icon: const Icon(Icons.more_vert),
+                    style: IconButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    onSelected: (v) => v == 'yesterday'
+                        ? _copy(context)
+                        : _copyFromDay(context),
+                    itemBuilder: (_) => [
+                      if (previous.isNotEmpty)
+                        const PopupMenuItem(
+                          value: 'yesterday',
+                          child: Text('Vom Vortag übernehmen'),
+                        ),
+                      const PopupMenuItem(
+                        value: 'day',
+                        child: Text('Von einem anderen Tag …'),
+                      ),
+                    ],
+                  ),
+                  IconButton.filledTonal(
+                    key: Key('add-${meal.name}'),
+                    tooltip: '${meal.label} hinzufügen',
+                    icon: const Icon(Icons.add),
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => AddFoodScreen(meal: meal),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Leer, aber am Vortag gab es etwas: mit einem Tipp wiederholen.
+            if (entries.isEmpty && previous.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: ActionChip(
+                    key: Key('repeat-${meal.name}'),
+                    avatar: const Icon(Icons.replay_rounded, size: 18),
+                    label: Text(
+                      'Wie am Vortag: '
+                      '${previous.length == 1 ? previous.first.name : '${previous.length} Einträge'}'
+                      ' · ${fmtInt(previous.fold(0.0, (s, e) => s + e.nutrients.kcal))} kcal',
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    onPressed: () => _copy(context),
                   ),
                 ),
               ),
-            ),
             if (entries.isNotEmpty) const Divider(indent: 16, endIndent: 16),
             for (final e in entries)
               ListTile(

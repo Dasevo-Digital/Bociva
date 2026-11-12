@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "de.status403.bociva"
+    namespace = "de.dasevo.bociva"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -16,7 +16,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "de.status403.bociva"
+        applicationId = "de.dasevo.bociva"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = 26 // Health Connect

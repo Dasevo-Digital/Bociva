@@ -1,4 +1,4 @@
-package de.status403.bociva
+package de.dasevo.bociva
 
 import io.flutter.embedding.android.FlutterFragmentActivity
 

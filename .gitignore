@@ -20,3 +20,6 @@ server/web/
 
 # Lokale Arbeitsanweisungen, nicht veröffentlichen
 /AGENTS.md
+
+# Persönlicher Xcode-Zustand (je Mac verschieden)
+xcuserdata/

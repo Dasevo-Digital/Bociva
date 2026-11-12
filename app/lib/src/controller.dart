@@ -320,9 +320,11 @@ class AppController extends ChangeNotifier {
     // Einmal pro Länge und Tag, auch wenn ein Eintrag gelöscht und neu
     // angelegt wird.
     final mark = '${now.today}:${now.current}';
-    if (now.current > before && _celebrated != mark) {
+    if (now.current > before &&
+        mark != (_celebrated ??= await _store.meta('streak.celebrated'))) {
       _celebrated = mark;
       _celebration = now;
+      await _store.setMeta('streak.celebrated', mark);
     }
     notifyListeners();
     _changed();
@@ -632,6 +634,16 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Ob der Nutzer zugestimmt hat, dass Tagessummen an den jetzigen
+  /// KI-Dienst gehen. Darunter können Werte aus Apple Health sein, die Apple
+  /// nur mit Zustimmung an Dritte weitergeben lässt.
+  Future<bool> reviewConsented() async =>
+      aiDestination != null &&
+      await _store.meta('ai.reviewConsent') == aiDestination;
+
+  Future<void> consentToReview() =>
+      _store.setMeta('ai.reviewConsent', aiDestination);
+
   /// Fasst die letzten [days] Tage für die KI zusammen. Nur Summen, keine
   /// einzelnen Einträge und keine Konto- oder Personendaten außer den Zielen.
   Future<String> reviewRecentDays(int days) async {
@@ -694,11 +706,19 @@ class AppController extends ChangeNotifier {
       for (final d in await health.readDays(14)) {
         final id = 'health-${d.date}';
         final existing = await _store.get(RecordKind.activity, id);
-        if (existing != null &&
-            !existing.deleted &&
-            existing.data['steps'] == d.steps &&
-            (existing.data['activeKcal'] as num?)?.round() ==
-                d.activeKcal.round()) {
+        // Liefern zwei Geräte verschiedene Werte (etwa iPhone und
+        // Android-Telefon), gilt je Wert der höhere. Sonst überschrieben sie
+        // sich bei jedem Abgleich gegenseitig.
+        final live = existing != null && !existing.deleted;
+        final oldSteps = live
+            ? ((existing.data['steps'] as num?) ?? 0).toInt()
+            : 0;
+        final oldKcal = live
+            ? ((existing.data['activeKcal'] as num?) ?? 0).toDouble()
+            : 0.0;
+        final steps = max(oldSteps, d.steps);
+        final kcal = max(oldKcal, d.activeKcal);
+        if (live && steps == oldSteps && kcal.round() == oldKcal.round()) {
           continue;
         }
         await repo.saveActivity(
@@ -707,8 +727,8 @@ class AppController extends ChangeNotifier {
             date: d.date,
             kind: ActivityKind.daySummary,
             source: 'health',
-            steps: d.steps,
-            activeKcal: d.activeKcal,
+            steps: steps,
+            activeKcal: kcal,
           ),
         );
         changed = true;

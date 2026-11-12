@@ -41,6 +41,8 @@ class _FoodAmountSheet extends StatefulWidget {
 }
 
 class _FoodAmountSheetState extends State<_FoodAmountSheet> {
+  /// Verhindert doppelte Einträge bei schnellem Doppeltippen.
+  bool _saving = false;
   late final TextEditingController _amount;
 
   @override
@@ -115,14 +117,20 @@ class _FoodAmountSheetState extends State<_FoodAmountSheet> {
           const SizedBox(height: 16),
           FilledButton(
             key: const Key('amount-add'),
-            onPressed: _value == null
+            onPressed: _value == null || _saving
                 ? null
                 : () async {
                     final navigator = Navigator.of(context);
+                    setState(() => _saving = true);
                     if (widget.onConfirm case final confirm?) {
                       confirm(_value!);
                     } else {
-                      await context.app.logFood(food, widget.meal!, _value!);
+                      try {
+                        await context.app.logFood(food, widget.meal!, _value!);
+                      } on Object {
+                        if (mounted) setState(() => _saving = false);
+                        rethrow;
+                      }
                     }
                     navigator.pop(true);
                   },
@@ -180,6 +188,21 @@ class _EntrySheet extends StatefulWidget {
 }
 
 class _EntrySheetState extends State<_EntrySheet> {
+  bool _saving = false;
+
+  /// Führt [action] einmal aus und schließt danach das Blatt.
+  Future<void> _once(Future<void> Function() action) async {
+    if (_saving) return;
+    final navigator = Navigator.of(context);
+    setState(() => _saving = true);
+    try {
+      await action();
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+    navigator.pop();
+  }
+
   late final _amount = TextEditingController(
     text: fmtInput(widget.entry.amount),
   );
@@ -228,24 +251,24 @@ class _EntrySheetState extends State<_EntrySheet> {
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size(0, 48),
                   ),
-                  onPressed: () async {
-                    final navigator = Navigator.of(context);
-                    await context.app.deleteEntry(e);
-                    navigator.pop();
-                  },
+                  onPressed: _saving
+                      ? null
+                      : () => _once(() => context.app.deleteEntry(e)),
                   child: const Text('Löschen'),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: FilledButton(
-                  onPressed: () async {
-                    final amount = parseNumber(_amount.text);
-                    if (amount == null || amount <= 0 || amount > 10000) return;
-                    final navigator = Navigator.of(context);
-                    await context.app.updateEntry(e, amount);
-                    navigator.pop();
-                  },
+                  onPressed: _saving
+                      ? null
+                      : () {
+                          final amount = parseNumber(_amount.text);
+                          if (amount == null || amount <= 0 || amount > 10000) {
+                            return;
+                          }
+                          _once(() => context.app.updateEntry(e, amount));
+                        },
                   child: const Text('Speichern'),
                 ),
               ),

@@ -34,9 +34,24 @@ abstract class HealthBridge {
 
 HealthBridge createHealthBridge() => createPlatformHealthBridge();
 
-/// Zeitpunkt für Health: der eingetragene Tag, mit der Uhrzeit der Eingabe.
+/// Zeitpunkt für Health: der eingetragene Tag, mit der Uhrzeit der Eingabe
+/// auf die Millisekunde. Darüber findet das Löschen genau diesen Eintrag;
+/// mit ganzen Sekunden träfe es auch andere aus derselben Sekunde, etwa
+/// mehrere Lebensmittel aus einer KI-Analyse.
 DateTime healthTime(String date, int createdAtMs) {
   final d = parseDateKey(date);
   final t = DateTime.fromMillisecondsSinceEpoch(createdAtMs);
-  return DateTime(d.year, d.month, d.day, t.hour, t.minute, t.second);
+  return DateTime(
+    d.year,
+    d.month,
+    d.day,
+    t.hour,
+    t.minute,
+    t.second,
+    t.millisecond,
+  );
 }
+
+/// Löschfenster: Health sucht Einträge, die darin beginnen.
+DateTime healthDeleteEnd(DateTime start) =>
+    start.add(const Duration(milliseconds: 1));

@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:bociva/src/controller.dart';
+import 'package:bociva/src/platform/health_bridge.dart';
 import 'package:bociva/src/platform/store_common.dart';
 import 'package:bociva/src/platform/store_native.dart';
 import 'package:bociva/src/screens/connect_screen.dart';
@@ -260,6 +261,20 @@ void main() {
       expect(find.byKey(const Key('streak-dialog')), findsNothing);
       expect(app.streak!.current, 3);
     });
+  });
+
+  test('Health-Zeit trennt Einträge derselben Sekunde', () {
+    final at = DateTime(2026, 3, 29, 12, 30, 15, 120).millisecondsSinceEpoch;
+    final a = healthTime('2026-03-29', at);
+    final b = healthTime('2026-03-29', at + 1);
+    expect(a.millisecond, 120);
+    // Das Löschfenster von a reicht nicht bis b.
+    expect(healthDeleteEnd(a).isAfter(b), isFalse);
+    // Ein nachgetragener Tag behält die Uhrzeit der Eingabe.
+    expect(
+      healthTime('2026-03-27', at),
+      DateTime(2026, 3, 27, 12, 30, 15, 120),
+    );
   });
 
   testWidgets('Diagramme zeichnen auch ohne Daten', (tester) async {

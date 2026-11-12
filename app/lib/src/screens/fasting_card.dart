@@ -139,7 +139,16 @@ class _StartSheetState extends State<_StartSheet> {
       picked.minute,
     );
     // Eine spätere Uhrzeit meint den gestrigen Abend.
-    if (start.isAfter(now)) start = start.subtract(const Duration(days: 1));
+    // Kalendertag zurück, nicht 24 Stunden (Zeitumstellung).
+    if (start.isAfter(now)) {
+      start = DateTime(
+        now.year,
+        now.month,
+        now.day - 1,
+        picked.hour,
+        picked.minute,
+      );
+    }
     setState(() => _start = start);
   }
 

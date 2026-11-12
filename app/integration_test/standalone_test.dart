@@ -127,6 +127,8 @@ void main() {
       find.byKey(const Key('recipe-name')),
       'Bananenquark',
     );
+    // Die Tastatur fährt ein und baut die Liste neu auf.
+    await _settleFor(tester, const Duration(seconds: 1));
     await tester.enterText(find.byKey(const Key('recipe-servings')), '2');
     FocusManager.instance.primaryFocus?.unfocus();
     await _settleFor(tester, const Duration(seconds: 1));

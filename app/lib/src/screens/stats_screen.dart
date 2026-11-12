@@ -80,7 +80,42 @@ class _StatsScreenState extends State<StatsScreen> {
     }
   }
 
+  Future<bool> _askConsent(AppController app) async {
+    if (await app.reviewConsented()) return true;
+    if (!mounted) return false;
+    final health = app.healthEnabled
+        ? ' (auch aus ${app.health.platformName})'
+        : '';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Tagessummen an ${app.aiDestination} senden?'),
+        content: Text(
+          'Für die Auswertung gehen pro Tag gegessene Kalorien, Eiweiß, '
+          'Kohlenhydrate, Fett, Wasser und verbrannte Kalorien$health an '
+          'diesen Dienst, dazu deine Tagesziele. Was du gegessen hast und '
+          'dein Profil bleiben bei dir.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            key: const Key('ai-review-consent'),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Einverstanden'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return false;
+    await app.consentToReview();
+    return true;
+  }
+
   Future<void> _runReview(AppController app) async {
+    if (!await _askConsent(app) || !mounted) return;
     setState(() {
       _reviewing = true;
       _review = null;

@@ -83,13 +83,21 @@ class _AiScreenState extends State<AiScreen> {
     }
   }
 
+  bool _saving = false;
+
   Future<void> _save() async {
+    if (_saving) return;
     final app = context.app;
     final navigator = Navigator.of(context);
-    for (final d in _drafts.where((d) => d.selected)) {
-      final amount = parseNumber(d.amount.text);
-      if (amount == null || amount <= 0 || amount > 10000) continue;
-      await app.logFood(d.item.toFood(), widget.meal, amount);
+    setState(() => _saving = true);
+    try {
+      for (final d in _drafts.where((d) => d.selected)) {
+        final amount = parseNumber(d.amount.text);
+        if (amount == null || amount <= 0 || amount > 10000) continue;
+        await app.logFood(d.item.toFood(), widget.meal, amount);
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
     navigator.pop();
   }
@@ -221,7 +229,9 @@ class _AiScreenState extends State<AiScreen> {
                   const SizedBox(height: 8),
                   FilledButton(
                     key: const Key('ai-save'),
-                    onPressed: _drafts.any((d) => d.selected) ? _save : null,
+                    onPressed: _drafts.any((d) => d.selected) && !_saving
+                        ? _save
+                        : null,
                     child: Text('Zu ${widget.meal.label} hinzufügen'),
                   ),
                 ],

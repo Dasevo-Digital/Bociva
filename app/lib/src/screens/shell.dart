@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:bociva_shared/bociva_shared.dart';
 import 'package:flutter/material.dart';
 
@@ -18,6 +20,7 @@ class Shell extends StatefulWidget {
 class _ShellState extends State<Shell> with WidgetsBindingObserver {
   int _index = 0;
   String _today = dateKey(DateTime.now());
+  Timer? _clock;
 
   static const _pages = [DiaryScreen(), StatsScreen(), SettingsScreen()];
   static const _items = [
@@ -30,21 +33,29 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Bleibt die App über Mitternacht offen, springt sie auf den neuen Tag;
+    // sonst landete ein Eintrag um 0:01 noch beim Vortag.
+    _clock = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (dateKey(DateTime.now()) != _today) _dayChanged();
+    });
+  }
+
+  void _dayChanged() {
+    final previous = _today;
+    _today = dateKey(DateTime.now());
+    context.appRead.onResume(previousToday: previous);
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _clock?.cancel();
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      final previous = _today;
-      _today = dateKey(DateTime.now());
-      context.app.onResume(previousToday: previous);
-    }
+    if (state == AppLifecycleState.resumed) _dayChanged();
   }
 
   /// Erst zeigen, wenn die Eingabemasken geschlossen sind; sonst schlösse

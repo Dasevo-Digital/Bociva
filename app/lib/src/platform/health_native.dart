@@ -22,7 +22,21 @@ class _NativeHealth implements HealthBridge {
     HealthDataType.ACTIVE_ENERGY_BURNED,
     HealthDataType.WEIGHT,
   ];
-  static const _write = [HealthDataType.NUTRITION, HealthDataType.WATER];
+
+  /// Was eine Mahlzeit in Apple Health ausmacht. Mit `NUTRITION` fragte das
+  /// Plugin alle 84 Nährstoffe an, obwohl Bociva nur diese vier schreibt.
+  static const _mealParts = [
+    HealthDataType.DIETARY_ENERGY_CONSUMED,
+    HealthDataType.DIETARY_PROTEIN_CONSUMED,
+    HealthDataType.DIETARY_CARBS_CONSUMED,
+    HealthDataType.DIETARY_FATS_CONSUMED,
+  ];
+
+  /// Health Connect kennt die Mahlzeit als einen Datensatz.
+  static List<HealthDataType> get _write => [
+    if (Platform.isIOS) ..._mealParts else HealthDataType.NUTRITION,
+    HealthDataType.WATER,
+  ];
 
   Future<void> _ready() async {
     if (!_configured) {
@@ -151,11 +165,18 @@ class _NativeHealth implements HealthBridge {
   Future<void> deleteEntry(DiaryEntry e) async {
     await _ready();
     final start = healthTime(e.date, e.createdAt);
+    final end = healthDeleteEnd(start);
     await _health.delete(
       type: HealthDataType.NUTRITION,
       startTime: start,
-      endTime: start.add(const Duration(seconds: 1)),
+      endTime: end,
     );
+    // Unter iOS bleiben die Einzelwerte einer gelöschten Mahlzeit sonst stehen.
+    if (Platform.isIOS) {
+      for (final type in _mealParts) {
+        await _health.delete(type: type, startTime: start, endTime: end);
+      }
+    }
   }
 
   @override
@@ -179,7 +200,7 @@ class _NativeHealth implements HealthBridge {
     await _health.delete(
       type: HealthDataType.WATER,
       startTime: start,
-      endTime: start.add(const Duration(seconds: 1)),
+      endTime: healthDeleteEnd(start),
     );
   }
 }
